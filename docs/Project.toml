@@ -1,0 +1,3 @@
+[deps]
+ChemicalDataAssimilation = "6f310806-728b-4feb-9ad7-5a2c43e80adb"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"

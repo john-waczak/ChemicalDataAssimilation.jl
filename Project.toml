@@ -1,0 +1,13 @@
+name = "ChemicalDataAssimilation"
+uuid = "6f310806-728b-4feb-9ad7-5a2c43e80adb"
+authors = ["John Waczak <john.louis.waczak@gmail.com>"]
+version = "1.0.0-DEV"
+
+[compat]
+julia = "1.8"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
