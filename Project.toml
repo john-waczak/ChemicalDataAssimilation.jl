@@ -3,6 +3,12 @@ uuid = "6f310806-728b-4feb-9ad7-5a2c43e80adb"
 authors = ["John Waczak <john.louis.waczak@gmail.com>"]
 version = "1.0.0-DEV"
 
+[deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+
 [compat]
 julia = "1.8"
 
