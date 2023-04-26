@@ -61,9 +61,8 @@ function rc_to_expression(rc_string, rate_list)
 end
 
 
-
 #function generate_rrates(fac_dict::Dict; model_name::String="mcm", params::NamedTuple=(T=291.483, P=1013.2))
-    function generate_rrates(fac_dict::Dict; model_name::String="mcm")
+function generate_rrates_funcs(fac_dict::Dict; model_name::String="mcm")
     outpath = "./models/$(model_name)/rrates.jl"
     outpath2 = "./models/$(model_name)/rate_names.txt"
     if isfile(outpath)
@@ -121,9 +120,39 @@ end
         end
     end
 
-    return rate_names
+    return String.(rate_names)
 end
 
 
 
 
+function generate_rrates(fac_dict::Dict, df_params::DataFrame, rate_list; model_name::String="mcm")
+    # if file already exists, delete it
+    outpath = "./models/$(model_name)/rrate_coeffs.jl"
+
+    if isfile(outpath)
+        rm(outpath)
+    end
+
+    # make sure output dir exists
+    if !isdir("./models/$(model_name)")
+        mkdir("./models/$(model_name)")
+    end
+
+    open(outpath, "w") do f
+
+        println(f,"# this will include *both* generic and complex")
+        println(f, "df_rate_coeffs = DataFrame()")
+        println(f, "# copy in the times")
+        println(f, "df_rate_coeffs.t = df_params.t")
+        println(f, "df_rate_coeffs.w_ap = df_params.w_ap")
+
+        for rate ∈ rate_list
+            println(f, "df_rate_coeffs[!, \"$rate\"] = $(rate).(df_params.temperature, df_params.pressure, df_params.M, df_params.O2, df_params.N2, df_params.H2O)")
+        end
+
+        # save the file
+        println(f, "\n\n")
+        println(f, "CSV.write(\"./models/$model_name/rrate_coeffs.csv\", df_rate_coeffs)")
+    end
+end
