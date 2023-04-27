@@ -90,7 +90,9 @@ function generate_species_df(path_to_names_csv::String, fac_dict::Dict; model_na
     end
 
     df_names = generate_name_conversion_table(path_to_names_csv)
+    df_names[!, "MCM Name"] .= strip.(df_names[!, "MCM Name"])
     species = generate_species(fac_dict)
+
 
     df_species = get_species_df(df_names, species)
 

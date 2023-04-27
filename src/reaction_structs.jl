@@ -1,32 +1,79 @@
+# Define Reaction Type Hierarchy
 abstract type Reaction end
+abstract type Photodissociation <: Reaction end
+abstract type CollisionReaction <: Reaction end
 
 
-# optionally, we could further reduce this to abstract types for these and
-# then define concrete types based on the number of products
+# Define Concrete Types
+struct Photodissociation11
+    idx_r1::Int
+    idx_p1::Int
 
-# abstract type Photodissociation <: Reaction end
-# abstract type Bimolecular <: Reaction end
-# abstract type Termolecular <: Reaction end
-
-# struct Bimolecular22  a struct for a bimolecular reaction with 2 reactants and 2 products
-# end
-
-
-
-
-
-struct Photodissociation <: Reaction
-    rate_coeff::Function
+    # reaction rate index
+    idx_k::Int
 end
 
+struct Photodissociation12
+    idx_r1::Int
+    idx_p1::Int
+    idx_p2::Int
 
-struct Bimolecular <: Reaction
-    rate_coeff::Function
+    # reaction rate index
+    idx_k::Int
+end
+
+struct Collision11
+    idx_r1::Int
+    idx_p1::Int
+
+    # reaction rate index
+    idx_k::Int
+
+    needs_ro2::Bool
+end
+
+struct Collision20
+    idx_r1::Int
+    idx_r2::Int
+
+    # reaction rate index
+    idx_k::Int
+
+    needs_ro2::Bool
+end
+
+struct Collision21
+    idx_r1::Int
+    idx_r2::Int
+    idx_p1::Int
+
+    # reaction rate index
+    idx_k::Int
+
+    needs_ro2::Bool
+end
+
+struct Collision22
+    idx_r1::Int
+    idx_r2::Int
+    idx_p1::Int
+    idx_p2::Int
+
+    # reaction rate index
+    idx_k::Int
+
     needs_ro2::Bool
 end
 
 
-struct Termolecular <: Reaction
-    rate_coeff::Function
-    needs_ro2::Bool
+
+function reaction_rate_coeff(rxn::Reaction, time::Float64, ro2_ratio::Float64)
+    return nothing
+end
+
+
+
+
+function rhs_update!(u, rxn::Reaction)
+    return nothing
 end
