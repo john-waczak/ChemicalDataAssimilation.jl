@@ -3,6 +3,8 @@ module ChemicalDataAssimilation
 using ProgressMeter
 using CSV, DataFrames
 using DelimitedFiles
+using SparseArrays
+
 include("parse_fac.jl")  # reading fac file
 include("reaction_rates.jl")  # generate time series of generic/complex rate coeffs
 include("species.jl")  # generate species list and name lookup
@@ -12,7 +14,8 @@ include("reaction_structs.jl")  # define structs for storing reactions
 include("initialize.jl")  # define method to sanely initialize concentrations
 include("ro2.jl")  # define indices for ro2 sum
 include("rrates_mechanism.jl")  # generate time series for actual reaction rate coeffs
-
+include("stoich_mats.jl")
+include("derivative_structs.jl")
 
 #---
 export read_fac_file, parse_rxns, get_spec_idx
@@ -26,7 +29,7 @@ export generate_densities
 export generate_photolysis_rates
 #---
 export Reaction, Photodissociation, CollisionReaction
-export parse_rxn
+export parse_rxn, generate_reaction_list
 #---
 export rxnrate_to_expression
 #---
@@ -35,7 +38,8 @@ export generate_init_dict
 export generate_ro2
 #---
 export generate_rrates_mechanism
-
-
-
+#---
+export generate_stoich_mat, get_sparse_mat
+#---
+export DerivativeTerms, update_derivative!
 end

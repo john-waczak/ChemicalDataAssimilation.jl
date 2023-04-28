@@ -50,6 +50,23 @@ end
 
 
 
+function generate_reaction_list(fac_dict::Dict, df_species::DataFrame)
+    species, reactions = parse_rxns(fac_dict["reaction_definitions"])
+    rxns = ChemicalDataAssimilation.Reaction[]
+    @showprogress for i ∈ 1:length(reactions)
+        try
+            push!(rxns, parse_rxn(reactions[i], i, df_species))
+        catch e
+            println(reactions[i])
+            println("\n")
+            println(e)
+            break
+        end
+    end
+    return rxns
+end
+
+
 
 function reaction_rate_coeff(rxn::Reaction, time::Float64, ro2_ratio::Float64)
     return nothing
