@@ -15,7 +15,7 @@ include("rrates_mechanism.jl")  # generate time series for actual reaction rate 
 
 
 #---
-export read_fac_file, parse_rxns
+export read_fac_file, parse_rxns, get_spec_idx
 #---
 export get_rrate_list, rc_to_expression, generate_rrates_funcs, generate_rrates
 #---
@@ -26,8 +26,7 @@ export generate_densities
 export generate_photolysis_rates
 #---
 export Reaction, Photodissociation, CollisionReaction
-export Photodissociation11, Photodissociation12
-export Collision11, Collision20, Collision21, Collision22
+export parse_rxn
 #---
 export rxnrate_to_expression
 #---

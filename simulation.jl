@@ -4,8 +4,12 @@ using Statistics
 using DelimitedFiles, CSV, DataFrames
 using ProgressMeter
 
-mechpath = "mechanism-files/extracted/alkanes/methane.fac"
-model_name = "methane"
+# mechpath = "mechanism-files/extracted/alkanes/methane.fac"
+# model_name = "methane"
+
+mechpath = "mechanism-files/extracted/full/mcm_subset.fac"
+model_name = "mcm_full"
+
 
 @assert ispath(mechpath) == true
 
@@ -127,11 +131,33 @@ df_rrate_coeffs_mech = CSV.File("./models/$model_name/rrate_coeffs_mech.csv") |>
 
 # now let's create a file holding all of the reaction structs in a vector that we can include
 
+fac_dict["reaction_definitions"][1]
+species, reactions = parse_rxns(fac_dict["reaction_definitions"])
+size(reactions)
+
+for i ∈ 1:length(reactions)
+    reactants, reactants_stoich, products, products_stoich, rrate_string = reactions[i]
+    if nothing ∈ products
+        println(i, "\t", products)
+    end
+end
+
+
+rxns = ChemicalDataAssimilation.Reaction[]
+@showprogress for i ∈ 1:length(reactions)
+    try
+        push!(rxns, parse_rxn(reactions[i], i, df_species))
+    catch e
+        println(reactions[i])
+        println("\n")
+        println(e)
+        break
+    end
+end
 
 
 
-
-
+# generate stoichiometry matrix for later visualization
 
 
 

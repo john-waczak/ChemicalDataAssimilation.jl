@@ -31,9 +31,15 @@ function read_fac_file(path::String)
 
     # out_dict["reaction_definitions"] = split(split_file[11], "\r\n")[2:end-1]
     # use regex instead
-    eqn_idxs = findall(r"%(.*?)\;",fac_file)  # find anything between } and ;
-    out_dict["reaction_definitions"] = [fac_file[eqn_idx] for eqn_idx ∈ eqn_idxs]
-    out_dict["reaction_definitions"] = [strip(replace(rxn, "%"=>"", ";"=>"", "\""=>"")) for rxn ∈ out_dict["reaction_definitions"]]
+    # eqn_idxs = findall(r"%(.*?)\;",fac_file)  # find anything between % and ;
+    # out_dict["reaction_definitions"] = [fac_file[eqn_idx] for eqn_idx ∈ eqn_idxs]
+    # out_dict["reaction_definitions"] = [strip(replace(rxn, "%"=>"", ";"=>"", "\""=>"")) for rxn ∈ out_dict["reaction_definitions"]]
+
+
+    out_dict["reaction_definitions"] = strip.(replace.(split(split_file[11],";")[1:end-1],
+                                                       "\r"=>"",
+                                                       "\n"=>"",
+                                                       "%" =>""))
 
     return out_dict
 end
@@ -103,3 +109,15 @@ function parse_rxns(rxns)
 
     return unique(vcat(species_list...)), reactions
 end
+
+
+
+function get_spec_idx(species::String, df_species::DataFrame)
+    return only(df_species[df_species[!, "MCM Name"] .== species, :idx_species])
+end
+
+
+function get_spec_idx(species::Vector{String}, df_species::DataFrame)
+    return [get_spec_idx(spec, df_species) for spec ∈ species]
+end
+

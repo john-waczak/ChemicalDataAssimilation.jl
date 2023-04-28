@@ -64,9 +64,6 @@ function generate_rrates_mechanism(fac_dict, rate_list; model_name::String="mcm"
         println(f, "df_mech_rate_coeffs.t = df_params.t")
         println(f, "df_mech_rate_coeffs.w_ap = df_params.w_ap")
 
-        for reaction ∈ reactions
-        end
-
         for i ∈ 1:length(reactions)
             reactants, reactants_stoich, products, products_stoich, rrate_string = reactions[i]
             rrate_string = rxnrate_to_expression(rrate_string, i, rate_list)
