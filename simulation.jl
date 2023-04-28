@@ -160,46 +160,11 @@ end
 # generate stoichiometry matrix for later visualization
 
 
+# generate derivative list
 
-# now let's define reaction structs
-# when we create the reactions, the reaction rate function should parsed to replace expression names with their dataframe
-# counterparts, i.e.
-#     KRO2HO2 ⟶ df_rrate_coeffs.KRO2HO2[idx_time]
-#     T       ⟶ df_params.temperature
-# where idx_time is fetched via the current time
 
-# we need to check if any of the actual reaction rates used in the equations are repeated anywhere... ← it appears they don't!
+# generate ODE RHS function
 
 
 # we should define a function, get_row_index(t::Float64) to return the index given an input time... NOTE: will this be differentiable?
 
-# the reaction rate function in our structs should be like
-# rrate_coeff(idx_time, df_params, df_rrate_coeffs, df_photolysis, ro2_ratio, etc...)
-
-
-# we can then write a generic function to evaluate the reaction rate coefficient for the
-# abstract reaction type, i.e.
-# function reaction_rate_coeff(rxn::Reaction)
-
-
-
-
-# 4. generate final lookup table for *all* reaction rate coefficients
-
-
-
-# generate file with constant vector of reactions
-# i.e.
-# const rxns = Reaction[...]
-
-species, reactions = parse_rxns(fac_dict["reaction_definitions"])
-unique_species = [spec for spec ∈ species if spec != nothing]
-
-for i ∈ 1:length(reactions)
-    reactants, reactants_stoich, products, products_stoich, rrate_string = reactions[i]
-    if occursin("J<", rxn_rate_string) || occursin("J <", rxn_rate_string)
-        #generate photodissociation
-    else
-        # generate collision
-    end
-end
