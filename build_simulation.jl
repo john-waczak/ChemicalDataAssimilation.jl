@@ -4,11 +4,11 @@ using Statistics
 using DelimitedFiles, CSV, DataFrames
 using ProgressMeter
 
-# mechpath = "mechanism-files/extracted/alkanes/methane.fac"
-# model_name = "methane"
+mechpath = "mechanism-files/extracted/alkanes/methane.fac"
+model_name = "methane"
 
-mechpath = "mechanism-files/extracted/full/mcm_subset.fac"
-model_name = "mcm_full"
+# mechpath = "mechanism-files/extracted/full/mcm_subset.fac"
+# model_name = "mcm_full"
 
 
 @assert ispath(mechpath) == true
@@ -179,7 +179,6 @@ end
 length(derivatives)
 
 
-prod(u₀[rxns[1].idxs_in])
 
 # generate ODE RHS function
 
@@ -187,79 +186,60 @@ prod(u₀[rxns[1].idxs_in])
 # we should define a function, get_row_index(t::Float64) to return the index given an input time... NOTE: will this be differentiable?
 
 
-du = copy(u₀)
 
-using BenchmarkTools
+# using BenchmarkTools
 
-@benchmark update_derivative!(1,
-                   du,
-                   u₀,
-                   derivatives[1],
-                   10.0,
-                   df_rrate_coeffs_mech,
-                   Δt_step,
-                   )
+# const K_matrix = Matrix{Float64}(df_rrate_coeffs_mech[:, 3:end])
+# typeof(K_matrix)
+# @benchmark 1.0 * K_matrix[1,1]
 
 
+# tval = -180.0
+# idx_t = 0
+# ro2_ratio = 1.0
 
-@benchmark 1.0 * @view df_rrate_coeffs_mech[1, "k_1"]
+# function rhs(du, u, p, t)
+#     # set everything to sero
+#     du .= 0.0
 
+#     # get the time index
+#     _, idx_t = findmin(x -> abs.(x.- t), df_rrate_coeffs_mech.t)
 
+#     # get the current ro2_ratio
+#     ro2_ratio = sum(u₀[idx_ro2])/RO2ᵢ
 
-K_matrix = Matrix{Float64}(df_rrate_coeffs_mech[:, 3:end])
-typeof(K_matrix)
-@benchmark 1.0 * K_matrix[1,1]
-
-
-# so it's clearly worth it to use a matrix
-
-
-ttest = 1.1
-
-function rhs1(t)
-    _, idx_t = findmin(x -> abs.(x.- ttest), df_rrate_coeffs_mech.t )
-    ro2_ratio = sum(u₀[idx_ro2])/RO2ᵢ
-    for derivative ∈ derivatives
-        update_derivative!(
-            idx_t,
-            du,
-            u₀,
-            derivative,
-            ro2_ratio,
-            df_rrate_coeffs_mech,
-            Δt_step
-        )
-    end
-end
+#     # update
+#     for derivative ∈ derivatives
+#         update_derivative!(
+#             idx_t,
+#             du,
+#             u,
+#             derivative,
+#             ro2_ratio,
+#             K_matrix,
+#             Δt_step
+#         )
+#     end
+# end
 
 
-function rhs2(t)
-    _, idx_t = findmin(x -> abs.(x.- ttest), df_rrate_coeffs_mech.t )
-    ro2_ratio = sum(u₀[idx_ro2])/RO2ᵢ
-    for derivative ∈ derivatives
-        update_derivative!(
-            idx_t,
-            du,
-            u₀,
-            derivative,
-            ro2_ratio,
-            K_matrix,
-            Δt_step
-        )
-    end
-end
+# du = copy(u₀)
+# @benchmark rhs(du, u₀, nothing, 1.0)
 
-@benchmark rhs1(1.0)
-@benchmark rhs2(1.0)
+# tmin = minimum(df_rrate_coeffs_mech.t)
+# tmax = maximum(df_rrate_coeffs_mech.t)
+
+# tspan = (tmin, tmax)
+
+# ode_prob = @time ODEProblem{true, SciMLBase.FullSpecialize}(rhs, u₀, tspan)
 
 
+# tol = 1e-6
+# @benchmark solve(ode_prob,
+#                  CVODE_BDF();
+#                  saveat=15.0,
+#                  reltol=tol,
+#                  abstol=tol
+#       )
 
 
-df_rrate_coeffs_mech
-
-
-step_time = round(ttest/Δt_step) * Δt_step
-df_rrate_coeffs_mech.t
-
-
-findmin(x->abs(x-t), a)

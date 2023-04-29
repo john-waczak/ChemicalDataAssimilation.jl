@@ -11,8 +11,14 @@ struct CollisionReaction <: Reaction
     idxs_in::Vector{Int}
     idxs_out::Vector{Int}
     idx_k::Int
-    needs_ro2::Bool
 end
+
+struct CollisionReactionRO2 <: Reaction
+    idxs_in::Vector{Int}
+    idxs_out::Vector{Int}
+    idx_k::Int
+end
+
 
 
 function parse_rxn(reaction, idx_reaction, df_species)
@@ -39,12 +45,20 @@ function parse_rxn(reaction, idx_reaction, df_species)
             idx_reaction
         )
     else
-        return CollisionReaction(
-            idx_reactants,
-            idx_products,
-            idx_reaction,
-            needs_ro2
-        )
+        if needs_ro2
+            return CollisionReactionRO2(
+                idx_reactants,
+                idx_products,
+                idx_reaction,
+            )
+
+        else
+            return CollisionReaction(
+                idx_reactants,
+                idx_products,
+                idx_reaction,
+            )
+        end
     end
 end
 
