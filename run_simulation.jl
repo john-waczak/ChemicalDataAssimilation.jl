@@ -110,9 +110,9 @@ const K_matrix = Matrix{Float64}(df_rrate_coeffs_mech[:, 3:end])
 const ts = df_rrate_coeffs_mech.t
 
 # define values used for update
-idx_t = 0
-tval = -180.0
-ro2_ratio = 1.0
+# idx_t = 0
+# tval = -180.0
+# ro2_ratio = 1.0
 
 function rhs!(du, u, p, t)
     # set everything to sero
@@ -156,6 +156,10 @@ end
 du = copy(u₀)
 @benchmark rhs!(du, u₀,nothing, 1.0)
 
+testval = 3
+@benchmark testval = prod(u₀[derivatives[1].idxs_in])
+
+
 
 tmin = minimum(ts)
 tmax = maximum(ts)
@@ -174,3 +178,17 @@ tol = 1e-6
                  )
 
 
+
+test_array = 1:10
+
+function test_f(arr)
+    testx = 1.0
+    for i ∈ 1:length(arr)
+        testx += 2*arr[i] * sin(arr[i])
+    end
+    return testx
+end
+
+
+length(derivatives) + length(derivatives_ro2)
+@benchmark update_derivative!(1, du, u₀, derivatives[1], ro2_ratio, K_matrix, Δt_step)
