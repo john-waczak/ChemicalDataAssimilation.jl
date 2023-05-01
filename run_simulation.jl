@@ -9,11 +9,11 @@ using Statistics
 using DifferentialEquations
 using Sundials
 
-mechpath = "mechanism-files/extracted/alkanes/methane.fac"
-model_name = "methane"
+# mechpath = "mechanism-files/extracted/alkanes/methane.fac"
+# model_name = "methane"
 
-# mechpath = "mechanism-files/extracted/full/mcm_subset.fac"
-# model_name = "mcm_full"
+mechpath = "mechanism-files/extracted/full/mcm_subset.fac"
+model_name = "mcm_full"
 
 @assert ispath(mechpath) == true
 
@@ -58,6 +58,18 @@ for (key, val) ∈ init_dict
 end
 
 # need to update this to use measurements
+df_nd_init = df_number_densities[1, Not([:C2H6, :t])]
+
+for name ∈ names(df_nd_init)
+    if name ∈ df_species[:, "MCM Name"]
+        idx = df_species[df_species[:, "MCM Name"] .== name, :].idx_species[1]
+        println("Old val: ", u₀[idx])
+        u₀[idx] = df_nd_init[name]
+        println("New val: ", u₀[idx])
+    end
+end
+
+
 
 # set up initial RO2 value using u₀
 ro2_sum = sum(u₀[idx_ro2])
@@ -105,6 +117,26 @@ const derivatives_ro2 = ChemicalDataAssimilation.DerivativeTermRO2[]
 end
 
 
+# create jacobian list
+const jacobian_terms = ChemicalDataAssimilation.JacobianTerm[]
+const jacobian_terms_ro2 = ChemicalDataAssimilation.JacobianTermRO2[]
+@showprogress for drxn ∈ derivatives
+    j_terms = JacobianTerms(drxn)
+    for j_term ∈ j_terms
+        push!(jacobian_terms, j_term)
+    end
+end
+
+@showprogress for drxn ∈ derivatives_ro2
+    j_terms = JacobianTerms(drxn)
+    for j_term ∈ j_terms
+        push!(jacobian_terms_ro2, j_term)
+    end
+end
+
+
+
+
 # convert reaction rates into matrix for faster lookup
 const K_matrix = Matrix{Float64}(df_rrate_coeffs_mech[:, 3:end])
 const ts = df_rrate_coeffs_mech.t
@@ -114,6 +146,7 @@ const ts = df_rrate_coeffs_mech.t
 # tval = -180.0
 # ro2_ratio = 1.0
 
+
 function rhs!(du, u, p, t)
     # set everything to sero
     du .= 0.0
@@ -122,8 +155,11 @@ function rhs!(du, u, p, t)
     tval,idx_t = findmin(x -> abs.(x.- t), ts)
 
     # get the current ro2_ratio
-    ro2_ratio = sum(u₀[idx_ro2])
+    ro2_ratio = sum(u[idx_ro2])
     ro2_ratio = ro2_ratio/RO2ᵢ
+
+    # set up product temporary value:
+    prod_temp = 1.0
 
     # update derivatives
     @inbounds for i ∈ 1:length(derivatives)
@@ -134,9 +170,12 @@ function rhs!(du, u, p, t)
             derivatives[i],
             ro2_ratio,
             K_matrix,
-            Δt_step
+            Δt_step,
+            prod_temp
         )
     end
+
+    prod_temp = 1.0
 
     @inbounds for i ∈ 1:length(derivatives_ro2)
         update_derivative!(
@@ -146,49 +185,200 @@ function rhs!(du, u, p, t)
             derivatives_ro2[i],
             ro2_ratio,
             K_matrix,
-            Δt_step
+            Δt_step,
+            prod_temp
         )
     end
 end
 
 
+function jac!(Jac, u, p, t)
+    # set everything to sero
+    Jac .= 0.0
+
+    # get the time index
+    tval,idx_t = findmin(x -> abs.(x.- t), ts)
+
+    # get the current ro2_ratio
+    ro2_ratio = sum(u₀[idx_ro2])
+    ro2_ratio = ro2_ratio/RO2ᵢ
+
+    # set up product temporary value:
+    prod_temp = 1.0
+
+    @inbounds for i ∈ 1:length(jacobian_terms)
+        update_jacobian!(
+            idx_t,
+            Jac,
+            u,
+            jacobian_terms[i],
+            ro2_ratio,
+            K_matrix,
+            Δt_step,
+            prod_temp
+        )
+    end
+
+    prod_temp = 1.0
+
+    @inbounds for i ∈ 1:length(jacobian_terms_ro2)
+        update_jacobian!(
+            idx_t,
+            Jac,
+            u,
+            jacobian_terms_ro2[i],
+            ro2_ratio,
+            K_matrix,
+            Δt_step,
+            prod_temp
+        )
+    end
+end
+
+
+
 # this should preallocate the rhs function
 du = copy(u₀)
-@benchmark rhs!(du, u₀,nothing, 1.0)
+du
+rhs!(du, u₀, nothing, -180.0)
 
-testval = 3
-@benchmark testval = prod(u₀[derivatives[1].idxs_in])
+du
+
+@benchmark rhs!(du, u₀,nothing, 1.0)  # got it down to 3 allocations!
+
+# set up jacobian prototype as a sparse matrix
+idx_pairs = []
+for jac_term ∈ jacobian_terms
+    push!(idx_pairs, (jac_term.i, jac_term.j))
+end
+for jac_term ∈ jacobian_terms_ro2
+    push!(idx_pairs, (jac_term.i, jac_term.j))
+end
+idx_pairs = unique(idx_pairs)
+size(idx_pairs)
+size(derivatives)
+
+I = [idx_pair[1] for idx_pair ∈ idx_pairs]
+J = [idx_pair[2] for idx_pair ∈ idx_pairs]
+V = zeros(size(I))
+
+using SparseArrays
+Jac = sparse(I,J,V)
+
+
+@benchmark jac!(Jac, u₀, nothing, 1.0)
+
+# set up jacobian prototype as a non sparse matrix
+Jac = zeros(size(u₀,1), size(u₀,1))
+
+@benchmark jac!(Jac, u₀, nothing, 1.0)
 
 
 
 tmin = minimum(ts)
 tmax = maximum(ts)
+#tmax = 0.0
 
 tspan = (tmin, tmax)
 
+# add a bump to each element so we start off nonzero
+u₀ .+= 1e-10
 ode_prob = @time ODEProblem{true, SciMLBase.FullSpecialize}(rhs!, u₀, tspan)
 
+fun = ODEFunction(rhs!; jac=jac!, jac_prototype=Jac)
+ode_prob2 = @time ODEProblem{true, SciMLBase.FullSpecialize}(fun, u₀, tspan)
 
-tol = 1e-6
+
+tol = 1e-3
 @benchmark solve(ode_prob,
                  CVODE_BDF();
                  saveat=15.0,
                  reltol=tol,
-                 abstol=tol
+                 abstol=tol,
+                 )
+
+@benchmark solve(ode_prob2,
+                 CVODE_BDF();
+                 saveat=15.0,
+                 reltol=tol,
+                 abstol=tol,
                  )
 
 
 
-test_array = 1:10
+sol = solve(
+    ode_prob2,
+    CVODE_BDF();
+    saveat=15.0,
+    reltol=tol,
+    abstol=tol,
+)
 
-function test_f(arr)
-    testx = 1.0
-    for i ∈ 1:length(arr)
-        testx += 2*arr[i] * sin(arr[i])
+size(sol)
+
+df_species
+speciesiwant = df_species[1:9, "MCM Name"]
+#speciesiwant = ["CO", "O3", "NO2", "APINENE", "H2", "CH4"]
+# speciesiwant = ["H2O2"]
+#speciesiwant = ["HO2"]
+
+
+size(sol)
+
+
+plotting_species_df = df_species[[name ∈ speciesiwant for name ∈ df_species[!, "MCM Name"]], :]
+
+names(plotting_species_df)
+
+p = plot()
+i = 1
+for row ∈ eachrow(plotting_species_df)
+    try
+        # plot!(p, sol.t ./ (60*24), sol[row.idx_species, :] .* (nₘ/m_init), label=row.formula, xlabel="t [days]", ylabel="concentration [molecules/cc]", legend=:outertopright)
+        plot!(p, sol.t ./ (60), sol[row.idx_species, :] ./ df_params.M, label=row.formula, xlabel="t [days]", ylabel="concentration [mixing ratio]", legend=:outertopright)
+    catch e
+        println(e)
+        println(row)
     end
-    return testx
 end
 
+display(p)
 
-length(derivatives) + length(derivatives_ro2)
-@benchmark update_derivative!(1, du, u₀, derivatives[1], ro2_ratio, K_matrix, Δt_step)
+
+idxs_in = Int[]
+prod(u₀[idxs_in])
+
+
+idxs_in = 1:10
+
+[i for i ∈ idxs_in if i != 2]
+
+# plotting_species_df[5,:]
+
+# plot(sol.t, sol[127, :] ./ df_params.M)
+# scatter!(sol.t, df_number_densities.CH4 ./ df_params.M)
+
+
+# plot(sol.t, df_params.temperature)
+# sol[:,3]
+
+# df_params
+
+# p2 = plot()
+# i = 1
+# for idx ∈ idxs
+#     try
+#         plot!(p2, sol2.t ./ (60*24), sol2[idx, :] .* (nₘ/m_init), label=speciesiwant[i], xlabel="t [days]", ylabel="concentration [ppb]", legend=:outertopright)
+#     catch e
+#         println(i, idxs[i])
+#     end
+
+#     i += 1
+# end
+
+# #dsipaly(p)
+
+# plot(p,p2)
+
+# ylims!(0.0, 100.0)
+

@@ -116,10 +116,20 @@ function update_derivative!(idx_t::Int,
                             deriv_term::DerivativeTerm,
                             ro2_ratio::Float64,
                             K_matrix::Matrix{Float64},
-                            Δt_step::Float64
+                            Δt_step::Float64,
+                            prod_temp::Float64
                             )
 
-    du[deriv_term.idx_du] += deriv_term.prefac * K_matrix[idx_t, deriv_term.idx_k] * prod(u[deriv_term.idxs_in])
+    # prod_temp = u[deriv_term.idxs_in[1]]
+    # for i ∈ 2:size(deriv_term.idxs_in,1)
+    for i ∈ axes(deriv_term.idxs_in,1)
+        prod_temp *= u[deriv_term.idxs_in[i]]
+    end
+
+
+    du[deriv_term.idx_du] += deriv_term.prefac * K_matrix[idx_t, deriv_term.idx_k] * prod_temp
+
+    # du[deriv_term.idx_du] += deriv_term.prefac * K_matrix[idx_t, deriv_term.idx_k] * prod(u[deriv_term.idxs_in])
 end
 
 function update_derivative!(idx_t::Int,
@@ -128,8 +138,17 @@ function update_derivative!(idx_t::Int,
                             deriv_term::DerivativeTermRO2,
                             ro2_ratio::Float64,
                             K_matrix::Matrix{Float64},
-                            Δt_step::Float64
+                            Δt_step::Float64,
+                            prod_temp::Float64
                             )
 
-    du[deriv_term.idx_du] += deriv_term.prefac * K_matrix[idx_t, deriv_term.idx_k] * prod(u[deriv_term.idxs_in]) * ro2_ratio
+    # prod_temp = u[deriv_term.idxs_in[1]]
+    # for i ∈ 2:size(deriv_term.idxs_in,1)
+    for i ∈ axes(deriv_term.idxs_in,1)
+        prod_temp *= u[deriv_term.idxs_in[i]]
+    end
+
+    du[deriv_term.idx_du] += deriv_term.prefac * K_matrix[idx_t, deriv_term.idx_k] * prod_temp * ro2_ratio
+
+    # du[deriv_term.idx_du] += deriv_term.prefac * K_matrix[idx_t, deriv_term.idx_k] * prod(u[deriv_term.idxs_in]) * ro2_ratio
 end

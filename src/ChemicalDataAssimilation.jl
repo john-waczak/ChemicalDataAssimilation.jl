@@ -16,6 +16,7 @@ include("ro2.jl")  # define indices for ro2 sum
 include("rrates_mechanism.jl")  # generate time series for actual reaction rate coeffs
 include("stoich_mats.jl")
 include("derivative_structs.jl")
+include("jacobian_struct.jl")
 
 #---
 export read_fac_file, parse_rxns, get_spec_idx
@@ -43,6 +44,6 @@ export generate_stoich_mat, get_sparse_mat
 #---
 export DerivativeTerms, update_derivative!
 #---
-
+export JacobianTerms, update_jacobian!
 
 end
