@@ -9,11 +9,11 @@ using Statistics
 using DifferentialEquations
 using Sundials
 
-# mechpath = "mechanism-files/extracted/alkanes/methane.fac"
-# model_name = "methane"
+mechpath = "mechanism-files/extracted/alkanes/methane.fac"
+model_name = "methane"
 
-mechpath = "mechanism-files/extracted/full/mcm_subset.fac"
-model_name = "mcm_full"
+# mechpath = "mechanism-files/extracted/full/mcm_subset.fac"
+# model_name = "mcm_full"
 
 @assert ispath(mechpath) == true
 
@@ -30,6 +30,8 @@ df_params = CSV.File("models/$model_name/state_parameters.csv") |> DataFrame
 df_number_densities = CSV.File("models/$model_name/number_densities.csv") |> DataFrame
 df_photolysis = CSV.File("models/$model_name/photolysis_rates.csv") |> DataFrame
 df_rrate_coeffs = CSV.File("./models/$model_name/rrate_coeffs.csv") |> DataFrame
+
+
 
 # grab ro2 indices
 include("./models/$model_name/ro2.jl")
@@ -265,6 +267,7 @@ V = zeros(size(I))
 using SparseArrays
 Jac = sparse(I,J,V)
 
+df_species
 
 @benchmark jac!(Jac, u₀, nothing, 1.0)
 
@@ -306,13 +309,23 @@ tol = 1e-3
 
 
 
+
+# sol = solve(
+#     ode_prob,
+#     CVODE_BDF();
+#     saveat=15.0,
+#     reltol=tol,
+#     abstol=tol,
+# );
+
 sol = solve(
     ode_prob2,
     CVODE_BDF();
     saveat=15.0,
     reltol=tol,
     abstol=tol,
-)
+);
+
 
 size(sol)
 
@@ -344,41 +357,4 @@ end
 
 display(p)
 
-
-idxs_in = Int[]
-prod(u₀[idxs_in])
-
-
-idxs_in = 1:10
-
-[i for i ∈ idxs_in if i != 2]
-
-# plotting_species_df[5,:]
-
-# plot(sol.t, sol[127, :] ./ df_params.M)
-# scatter!(sol.t, df_number_densities.CH4 ./ df_params.M)
-
-
-# plot(sol.t, df_params.temperature)
-# sol[:,3]
-
-# df_params
-
-# p2 = plot()
-# i = 1
-# for idx ∈ idxs
-#     try
-#         plot!(p2, sol2.t ./ (60*24), sol2[idx, :] .* (nₘ/m_init), label=speciesiwant[i], xlabel="t [days]", ylabel="concentration [ppb]", legend=:outertopright)
-#     catch e
-#         println(i, idxs[i])
-#     end
-
-#     i += 1
-# end
-
-# #dsipaly(p)
-
-# plot(p,p2)
-
-# ylims!(0.0, 100.0)
 
