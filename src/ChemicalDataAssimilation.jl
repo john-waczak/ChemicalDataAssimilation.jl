@@ -17,6 +17,7 @@ include("rrates_mechanism.jl")  # generate time series for actual reaction rate 
 include("stoich_mats.jl")
 include("derivative_structs.jl")
 include("jacobian_struct.jl")
+include("4dvar.jl")
 
 #---
 export read_fac_file, parse_rxns, get_spec_idx
@@ -42,8 +43,10 @@ export generate_rrates_mechanism
 #---
 export generate_stoich_mat, get_sparse_mat
 #---
-export DerivativeTerms, update_derivative!
+export DerivativeTerms, update_derivative!, write_rhs_func
 #---
-export JacobianTerms, update_jacobian!
+export JacobianTerms, update_jacobian!, write_jac_func, generate_jac_prototype
+#
+export ObsOpMeas
 
 end

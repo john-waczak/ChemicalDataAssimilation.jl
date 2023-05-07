@@ -3,6 +3,13 @@ function generate_densities(no_ap_path::String, w_ap_path::String; model_name::S
     outpath1 = "./models/$(model_name)/number_densities.csv"
     outpath2 = "./models/$(model_name)/state_parameters.csv"  # i.e. M, O2, N2, H2O + Temp, Pressure
 
+    if occursin("ϵ", no_ap_path) || occursin("ϵ", w_ap_path)
+        outpath1 = "./models/$(model_name)/number_densities_ϵ.csv"
+        outpath2 = "./models/$(model_name)/state_parameters_ϵ.csv"
+    end
+
+
+
     if isfile(outpath1) || isfile(outpath2)
         rm(outpath1)
         rm(outpath2)

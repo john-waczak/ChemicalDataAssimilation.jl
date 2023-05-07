@@ -91,3 +91,89 @@ function update_jacobian!(idx_t::Int,
 end
 
 
+
+
+jac_func="""
+function jac!(Jac, u, p, t)
+    # set everything to sero
+    Jac .= 0.0
+
+    # get the time index
+    tval,idx_t = findmin(x -> abs.(x.- t), ts)
+
+    # get the current ro2_ratio
+    ro2_ratio = sum(u₀[idx_ro2])
+    ro2_ratio = ro2_ratio/RO2ᵢ
+
+    # set up product temporary value:
+    prod_temp = 1.0
+
+    @inbounds for i ∈ 1:length(jacobian_terms)
+        update_jacobian!(
+            idx_t,
+            Jac,
+            u,
+            jacobian_terms[i],
+            ro2_ratio,
+            K_matrix,
+            Δt_step,
+            prod_temp
+        )
+    end
+
+    prod_temp = 1.0
+
+    @inbounds for i ∈ 1:length(jacobian_terms_ro2)
+        update_jacobian!(
+            idx_t,
+            Jac,
+            u,
+            jacobian_terms_ro2[i],
+            ro2_ratio,
+            K_matrix,
+            Δt_step,
+            prod_temp
+        )
+    end
+end
+"""
+
+
+function write_jac_func(;model_name::String="mcm")
+    outpath = "./models/$(model_name)/jacobian.jl"
+
+    # if it already exists, remove it so we can recreate it
+    if isfile(outpath)
+        rm(outpath)
+    end
+
+    if !isdir("./models/$(model_name)")
+        mkdir("./models/$(model_name)")
+    end
+
+    open(outpath, "w") do f
+        println(f, jac_func)
+    end
+
+end
+
+
+function generate_jac_prototype(jacobian_terms::Vector{JacobianTerm}, jacobian_terms_ro2::Vector{JacobianTermRO2})
+    idx_pairs = []
+    for jac_term ∈ jacobian_terms
+        push!(idx_pairs, (jac_term.i, jac_term.j))
+    end
+    for jac_term ∈ jacobian_terms_ro2
+        push!(idx_pairs, (jac_term.i, jac_term.j))
+    end
+    idx_pairs = unique(idx_pairs)
+
+    I = [idx_pair[1] for idx_pair ∈ idx_pairs]
+    J = [idx_pair[2] for idx_pair ∈ idx_pairs]
+    V = zeros(size(I))
+
+    Jac = sparse(I,J,V)
+
+    return Jac
+end
+

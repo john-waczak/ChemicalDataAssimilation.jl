@@ -152,3 +152,70 @@ function update_derivative!(idx_t::Int,
 
     # du[deriv_term.idx_du] += deriv_term.prefac * K_matrix[idx_t, deriv_term.idx_k] * prod(u[deriv_term.idxs_in]) * ro2_ratio
 end
+
+
+
+rhs_func = """
+function rhs!(du, u, p, t)
+    # set everything to sero
+    du .= 0.0
+
+    # get the time index
+    tval,idx_t = findmin(x -> abs.(x.- t), ts)
+
+    # get the current ro2_ratio
+    ro2_ratio = sum(u[idx_ro2])
+    ro2_ratio = ro2_ratio/RO2ᵢ
+
+    # set up product temporary value:
+    prod_temp = 1.0
+
+    # update derivatives
+    @inbounds for i ∈ 1:length(derivatives)
+        update_derivative!(
+            idx_t,
+            du,
+            u,
+            derivatives[i],
+            ro2_ratio,
+            K_matrix,
+            Δt_step,
+            prod_temp
+        )
+    end
+
+    prod_temp = 1.0
+
+    @inbounds for i ∈ 1:length(derivatives_ro2)
+        update_derivative!(
+            idx_t,
+            du,
+            u,
+            derivatives_ro2[i],
+            ro2_ratio,
+            K_matrix,
+            Δt_step,
+            prod_temp
+        )
+    end
+end
+"""
+
+function write_rhs_func(;model_name::String="mcm")
+    outpath = "./models/$(model_name)/rhs.jl"
+
+    # if it already exists, remove it so we can recreate it
+    if isfile(outpath)
+        rm(outpath)
+    end
+
+    if !isdir("./models/$(model_name)")
+        mkdir("./models/$(model_name)")
+    end
+
+    open(outpath, "w") do f
+        println(f, rhs_func)
+    end
+
+end
+
