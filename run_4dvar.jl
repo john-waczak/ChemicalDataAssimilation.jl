@@ -268,10 +268,18 @@ df_species
 
 
 # set up measurement covariance matrix
-meas_ϵ = collect(df_number_densities[1, Not([measurements_to_ignore..., :t, :w_ap])])
-fudge_fac = 0.1
-const R = diagm( (fudge_fac .* meas_ϵ) .^ 2)
-const Rinv = inv(R)
+#meas_ϵ = collect(df_number_densities[1, Not([measurements_to_ignore..., :t, :w_ap])])
+const meas_ϵ = Matrix(df_number_densities_ϵ[:, Not([measurements_to_ignore..., :t, :w_ap])])'
+
+
+@benchmark Rmat(1,meas_ϵ)
+@benchmark Rinv(1, meas_ϵ)
+
+
+# fudge_fac = 0.1
+# fudge_fac = 1.0
+# const R = diagm( (fudge_fac .* meas_ϵ) .^ 2)
+# const Rinv = inv(R)
 
 # σ_b = 0.1
 # B = diagm( σ_b^2 .* u₀ .^ 2)
@@ -313,7 +321,7 @@ function loss(u0a)
         verbose=false
     )
 
-    return 0.5*sum((W[:,j] .- ObsOpMeas(sol[:,j], idx_meas))' * Rinv * (W[:,j] .- ObsOpMeas(sol[:,j], idx_meas)) for j ∈ axes(W,2))
+    return 0.5*sum((W[:,j] .- ObsOpMeas(sol[:,j], idx_meas))' * Rinv(j, meas_ϵ) * (W[:,j] .- ObsOpMeas(sol[:,j], idx_meas)) for j ∈ axes(W,2))
 end
 
 
@@ -321,8 +329,8 @@ end
 @benchmark loss(u₀)
 
 
-u₀
-u0a = u₀ .+ 1e8
+minimum(u₀[u₀ .> 0])
+u0a = u₀ .+ 5e8  # what's reasonable here?
 
 optf = OptimizationFunction((x,p)->loss(x), Optimization.AutoZygote())
 opt_prob = Optimization.OptimizationProblem(optf, u0a, lb=zeros(size(u₀)), ub=1e50*ones(size(u₀))) #, ub= [Inf for _ ∈ 1:length(u₀)])
@@ -336,6 +344,7 @@ u₀
 
 u0a_final = opt_sol.u
 
+df_species
 # save output to a file
 
 if !isdir("models/$model_name/4dvar")
@@ -372,7 +381,7 @@ idx_meas
         )
 
     scatter!(times, W[i,:],
-            yerror=[sqrt(R[i,i]) for _ ∈ 1:size(W,2)],
+            yerror=[sqrt(Rmat(t,meas_ϵ)[i,i]) for t ∈ 1:size(W,2)],
             label="Measurements",
             )
     xlabel!("time [minutes]")

@@ -4,6 +4,7 @@ using ProgressMeter
 using CSV, DataFrames
 using DelimitedFiles
 using SparseArrays
+using LinearAlgebra
 
 include("parse_fac.jl")  # reading fac file
 include("reaction_rates.jl")  # generate time series of generic/complex rate coeffs
@@ -18,6 +19,7 @@ include("stoich_mats.jl")
 include("derivative_structs.jl")
 include("jacobian_struct.jl")
 include("4dvar.jl")
+include("EKF.jl")
 
 #---
 export read_fac_file, parse_rxns, get_spec_idx
@@ -46,7 +48,8 @@ export generate_stoich_mat, get_sparse_mat
 export DerivativeTerms, update_derivative!, write_rhs_func
 #---
 export JacobianTerms, update_jacobian!, write_jac_func, generate_jac_prototype
-#
-export ObsOpMeas
-
+#---
+export ObsOpMeas, Rmat, Rinv
+#---
+export JObs
 end

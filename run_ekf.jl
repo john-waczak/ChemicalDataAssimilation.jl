@@ -91,6 +91,25 @@ for i ∈ 3:ncol(df_rrate_coeffs_mech)
 end
 
 
+# --------------------------------------------------------------------------------------------------------------------------
+# Get measurement indices
+# --------------------------------------------------------------------------------------------------------------------------
+
+is_meas_in_mechanism = [spec ∈ df_species[!, "MCM Name"] for spec ∈ names(df_number_densities[:, Not([:t, :w_ap])])]
+
+df_nd_to_use = df_number_densities[:, Not([:t, :w_ap])]
+df_nd_to_use = df_nd_to_use[:, is_meas_in_mechanism]
+
+df_nd_to_use_ϵ = df_number_densities[:, Not([:t, :w_ap])]
+df_nd_to_use_ϵ = df_nd_to_use_ϵ[:, is_meas_in_mechanism]
+
+const idx_meas = Int[]
+for spec_name ∈ names(df_nd_to_use)
+    println(spec_name)
+    push!(idx_meas, df_species[df_species[!, "MCM Name"] .== spec_name, :idx_species][1])
+end
+
+idx_meas
 
 
 # --------------------------------------------------------------------------------------------------------------------------
@@ -177,6 +196,7 @@ du = copy(u₀)
 rhs!(du, u₀, nothing, -180.0)
 
 jac_prototype = generate_jac_prototype(jacobian_terms, jacobian_terms_ro2)
+# jac_prototype=zeros(size(u₀,1),size(u₀,1))
 
 jac!(jac_prototype, u₀, nothing, 1.0)
 
@@ -209,8 +229,22 @@ sol = solve(
 
 
 # define R
-# define Q
+meas_ϵ = collect(df_number_densities_ϵ[1, Not([measurements_to_ignore..., :t, :w_ap])])
+fudge_fac = 0.1
+#fudge_fac = 1.0
+const R = diagm( (fudge_fac .* meas_ϵ) .^ 2)
+const Rinv = inv(R)
+
+
+
+# define W matrix of observations
+
+
+## verify that each time series includes NaN's and that observation operator ignores NaN values...
+
 # define Jacobian of Observation Operator
+
+# define Q
 
 const Q = 0.0 * I(nrow(df_species))  # we're not including process noise for now
 
@@ -244,3 +278,68 @@ const ts = df_rrate_coeffs_mech.t
 # include rhs and jacobian
 include("models/$model_name/rhs.jl")
 include("models/$model_name/jacobian.jl")
+
+
+# define ODE Problem
+fun = ODEFunction(rhs!; jac=jac!, jac_prototype=jac_prototype)
+ode_prob = @time ODEProblem{true, SciMLBase.FullSpecialize}(fun, u₀, tspan)
+
+# integrator = init(
+#     ode_prob,
+#     CVODE_BDF();
+#     # saveat=15.0,
+#     dense=false,
+# #    save_everystep=false,
+# #    save_start=false,
+# #    save_end=false,
+#     reltol=tol,
+#     abstol=tol
+# )
+
+
+# # step!(integrator,
+# #       Δt_step,
+# #       true
+# #       )
+
+# # integrator.sol
+
+# initialize the analysis matrix
+uₐ = zeros(length(u₀), length(ts))
+
+# set the first value to the background estimate
+uₐ[:,1] .= u₀
+
+
+function getTimeIndex(t, Δt)
+    return Int(round(t/Δt)) + 1  # since arrays are 1-indexed
+end
+
+# define helper function to update the analysis result
+function update_uₐ!(uₐ, ua_new, t_now, Δt)
+    idx_t = getTimeIndex(t_now, Δt)
+    uₐ[:,idx_t] .= ua_new
+end
+
+# tell Zygote to ignore our update function
+Zygote.@nograd update_uₐ!
+
+
+function model_forward!(u_now, t_now)
+    _prob = remake(ode_prob, u0=u_now, tspan=(t_now, t_now+Δt_step))
+    solve(_prob, CVODE_BDF(), reltol=tol, abstol=tol, dense=false,save_everystep=false,save_start=false, sensealg=QuadratureAdjoint())[:,end]
+end
+
+
+@benchmark Zygote.withjacobian(model_forward!, u₀, ts[1])
+
+
+@benchmark solve(ode_prob, CVODE_BDF(linear_solver=:Dense), saveat=15.0, reltol=tol, abstol=tol)
+
+# @benchmark solve(ode_prob, ImplicitMidpoint(), dt=Δt_step, saveat=15.0, reltol=tol, abstol=tol, verbose=false)
+# @benchmark solve(ode_prob, FBDF(), saveat=15.0, reltol=tol, abstol=tol, verbose=false)
+# @benchmark solve(ode_prob, CVODE_BDF(linear_solver=:LapackDense), saveat=15.0, reltol=tol, abstol=tol)
+# @benchmark solve(ode_prob, CVODE_BDF(linear_solver=:KLU), saveat=15.0, reltol=tol, abstol=tol)
+
+
+idx_meas
