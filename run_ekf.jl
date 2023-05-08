@@ -358,7 +358,7 @@ DM[1]
     u_next .= u_next + Kalman*(W[is_meas_not_nan, k+1] - u_h)
     P .= (I(length(u_next)) - Kalman*DH)*P
 
-    # filter out zero values
+    # filter negative values to zero
     u_next[u_next .≤ 0.0] .= 0.0
 
     # update the analysis vector
