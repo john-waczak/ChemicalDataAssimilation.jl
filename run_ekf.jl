@@ -28,6 +28,9 @@ using OptimizationOptimJL
 # for generating specialized matrix types
 using LinearAlgebra
 
+# for mixing ratio conversion
+using Measurements
+
 
 # --------------------------------------------------------------------------------------------------------------------------
 # Setup paths
@@ -51,6 +54,7 @@ const Δt_step = 15.0  # time step in minutes
 
 df_species = CSV.File("models/$model_name/species.csv") |> DataFrame;
 df_params = CSV.File("models/$model_name/state_parameters.csv") |> DataFrame
+df_params_ϵ = CSV.File("models/$model_name/state_parameters_ϵ.csv") |> DataFrame
 df_number_densities = CSV.File("models/$model_name/number_densities.csv") |> DataFrame;
 df_number_densities_ϵ = CSV.File("models/$model_name/number_densities_ϵ.csv") |> DataFrame;
 
@@ -228,32 +232,42 @@ sol = solve(
 );
 
 
+
 # define R
-meas_ϵ = collect(df_number_densities_ϵ[1, Not([measurements_to_ignore..., :t, :w_ap])])
-fudge_fac = 0.1
-#fudge_fac = 1.0
-const R = diagm( (fudge_fac .* meas_ϵ) .^ 2)
-const Rinv = inv(R)
+const fudge_fac = 0.1
+
+const meas_ϵ = Matrix(df_nd_to_use_ϵ)'
+idx_meas_nonan = get_idxs_not_nans(meas_ϵ[:,end])
+
+
+@benchmark Rmat_nonan(1, idx_meas_nonan, meas_ϵ; fudge_fac=fudge_fac)
 
 
 
 # define W matrix of observations
+const W = Matrix(df_nd_to_use)'
 
 
-## verify that each time series includes NaN's and that observation operator ignores NaN values...
 
-# define Jacobian of Observation Operator
+# test observation operator and it's jacobian
+is_meas_not_nan = get_idxs_not_nans(meas_ϵ[:,end])
+idx_meas[is_meas_not_nan]
+u_h = Obs(u₀, idx_meas[is_meas_not_nan])
+# JObs(u_h)
+
+
 
 # define Q
 
 const Q = 0.0 * I(nrow(df_species))  # we're not including process noise for now
 
 # define covariance matrix and set it to some initial values
-const P = Symmetric(zeros(nrow(df_species), nrow(df_species)))
+const P = zeros(nrow(df_species), nrow(df_species))
 
 fudge_prefac = 0.1
 for i ∈ 1:length(u₀)
     P[i,i] = (fudge_prefac * u₀[i])^2
+    #P[i,i] = (u₀[i])^2
 end
 
 
@@ -264,7 +278,7 @@ P_diag[:,1] .= [P[i,i] for i ∈ 1:length(u₀)]
 
 
 # preallocate kalman gain matrix
-const Kₖ = zeros(nrow(df_species), length(idx_meas))
+# const Kalman = zeros(nrow(df_species), length(idx_meas))
 
 # A×X=B     --> X = A\B
 # A == X×B  --> X = A/B  (we'll use this one I think)
@@ -284,45 +298,11 @@ include("models/$model_name/jacobian.jl")
 fun = ODEFunction(rhs!; jac=jac!, jac_prototype=jac_prototype)
 ode_prob = @time ODEProblem{true, SciMLBase.FullSpecialize}(fun, u₀, tspan)
 
-# integrator = init(
-#     ode_prob,
-#     CVODE_BDF();
-#     # saveat=15.0,
-#     dense=false,
-# #    save_everystep=false,
-# #    save_start=false,
-# #    save_end=false,
-#     reltol=tol,
-#     abstol=tol
-# )
-
-
-# # step!(integrator,
-# #       Δt_step,
-# #       true
-# #       )
-
-# # integrator.sol
-
 # initialize the analysis matrix
-uₐ = zeros(length(u₀), length(ts))
+const uₐ = zeros(length(u₀), length(ts))
 
 # set the first value to the background estimate
 uₐ[:,1] .= u₀
-
-
-function getTimeIndex(t, Δt)
-    return Int(round(t/Δt)) + 1  # since arrays are 1-indexed
-end
-
-# define helper function to update the analysis result
-function update_uₐ!(uₐ, ua_new, t_now, Δt)
-    idx_t = getTimeIndex(t_now, Δt)
-    uₐ[:,idx_t] .= ua_new
-end
-
-# tell Zygote to ignore our update function
-Zygote.@nograd update_uₐ!
 
 
 function model_forward!(u_now, t_now)
@@ -330,16 +310,119 @@ function model_forward!(u_now, t_now)
     solve(_prob, CVODE_BDF(), reltol=tol, abstol=tol, dense=false,save_everystep=false,save_start=false, sensealg=QuadratureAdjoint())[:,end]
 end
 
+# @benchmark Zygote.withjacobian(model_forward!, u₀, ts[1])
+Zygote.withjacobian(model_forward!, u₀, ts[1])
 
-@benchmark Zygote.withjacobian(model_forward!, u₀, ts[1])
+u_next, DM = Zygote.withjacobian(model_forward!, u₀, ts[1])
+DM[1]
+
+# Assimilation Loop
+@showprogress for k ∈ 1:length(ts)-1  # because we always update the *next* value
+#for k ∈ 1:length(ts)-1  # because we always update the *next* value
+#for k ∈ 1:37
+#    println(k, " ", ts[k])
+#    k = 38  # for testing
+    u_now = uₐ[:,k]  # should preallocate this
+
+    # --------------------------
+    # Forecast Step
+    # --------------------------
+
+    # run model forward one Δt
+    u_next, DM = Zygote.withjacobian(model_forward!, u_now, ts[k])
+    DM = DM[1]  # result is a 1-element tuple, so we index it
+
+    # update the background covariance matrix
+    P .= DM*P*DM' + Q
 
 
-@benchmark solve(ode_prob, CVODE_BDF(linear_solver=:Dense), saveat=15.0, reltol=tol, abstol=tol)
+    # --------------------------
+    # Analysis Step
+    # --------------------------
 
-# @benchmark solve(ode_prob, ImplicitMidpoint(), dt=Δt_step, saveat=15.0, reltol=tol, abstol=tol, verbose=false)
-# @benchmark solve(ode_prob, FBDF(), saveat=15.0, reltol=tol, abstol=tol, verbose=false)
-# @benchmark solve(ode_prob, CVODE_BDF(linear_solver=:LapackDense), saveat=15.0, reltol=tol, abstol=tol)
-# @benchmark solve(ode_prob, CVODE_BDF(linear_solver=:KLU), saveat=15.0, reltol=tol, abstol=tol)
+    is_meas_not_nan = get_idxs_not_nans(meas_ϵ[:,k+1])
+    idx_meas_nonan = idx_meas[is_meas_not_nan]
+    u_h = Obs(u_next, idx_meas_nonan)
+
+    DH = JObs(u_h, u_next, idx_meas_nonan)
+    #denom = DH*P*DH' + Rmat_nonan(k, is_meas_not_nan, meas_ϵ; fudge_fac=fudge_fac)
+    denom = DH*P*DH' + Rmat_nonan(k+1, is_meas_not_nan, meas_ϵ; fudge_fac=fudge_fac)
+
+    # A == X×B  --> X = A/B  (we'll use this one I think)
+    Kalman = P*DH'/denom
+    size(Kalman)
+#    Kalman = P*DH'*inv(denom)
+
+    # perform the analysis
+
+    u_next .= u_next + Kalman*(W[is_meas_not_nan, k+1] - u_h)
+    P .= (I(length(u_next)) - Kalman*DH)*P
+
+    # filter out zero values
+    u_next[u_next .≤ 0.0] .= 0.0
+
+    # update the analysis vector
+    update_uₐ!(uₐ, u_next, k+1)
+    P_diag[:,k+1] .= [P[i,i] for i ∈ 1:length(u₀)]
+end
 
 
-idx_meas
+
+# convert final output into mixing ratios
+
+M = df_params.M .± df_params_ϵ.M
+
+uₐ_nd = uₐ .± sqrt.(P_diag)
+
+
+uₐ_mr = copy(uₐ_nd)
+for i ∈ axes(uₐ_mr, 1)
+    uₐ_mr[i,:] .= uₐ_mr[i,:] ./ M
+end
+
+
+ua_mr_vals = Measurements.value.(uₐ_mr)
+ua_mr_ϵ = Measurements.uncertainty.(uₐ_mr)
+
+W_mr = W .± meas_ϵ
+for i ∈ axes(W_mr, 1)
+    W_mr[i,:] .= W_mr[i,:] ./ M
+end
+W_mr_val = Measurements.value.(W_mr)
+W_mr_ϵ = Measurements.uncertainty.(W_mr)
+
+# ------------ Plots -----------------
+
+if !isdir("models/$model_name/EKF")
+    mkpath("models/$model_name/EKF")
+end
+
+
+@showprogress for i ∈ 1:nrow(df_species)
+#    i=1
+    plot_spec_name = df_species[df_species.idx_species .== i, "MCM Name"][1]
+
+    plot(
+        ts,ua_mr_vals[i,:],
+        ribbon=ua_mr_vals[i,:],
+        xlabel="time [minutes]",
+        ylabel="concentration [mixing ratio]",
+        label="EKF",
+        title=plot_spec_name,
+        lw=3
+    )
+
+    vline!([0.0], lw=3, label="")
+
+    if i ∈ idx_meas
+        idx_to_use = findfirst(x->x==i, idx_meas)
+        scatter!(ts, W_mr_val[idx_to_use,:],
+                 yerror=W_mr_ϵ[idx_to_use,:],
+                 label="Measurements",
+                 )
+    end
+
+    savefig("models/$model_name/EKF/$(plot_spec_name).png")
+    savefig("models/$model_name/EKF/$(plot_spec_name).pdf")
+end
+

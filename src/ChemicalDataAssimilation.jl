@@ -5,6 +5,7 @@ using CSV, DataFrames
 using DelimitedFiles
 using SparseArrays
 using LinearAlgebra
+using Zygote
 
 include("parse_fac.jl")  # reading fac file
 include("reaction_rates.jl")  # generate time series of generic/complex rate coeffs
@@ -51,5 +52,6 @@ export JacobianTerms, update_jacobian!, write_jac_func, generate_jac_prototype
 #---
 export ObsOpMeas, Rmat, Rinv
 #---
-export JObs
+export JObs, Rmat_nonan, Rinv_nonan, get_idxs_not_nans, Obs, JObs, getTimeIndex, update_uₐ!
+
 end

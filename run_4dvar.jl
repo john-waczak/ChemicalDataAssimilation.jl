@@ -271,9 +271,9 @@ df_species
 #meas_ϵ = collect(df_number_densities[1, Not([measurements_to_ignore..., :t, :w_ap])])
 const meas_ϵ = Matrix(df_number_densities_ϵ[:, Not([measurements_to_ignore..., :t, :w_ap])])'
 
-
-@benchmark Rmat(1,meas_ϵ)
-@benchmark Rinv(1, meas_ϵ)
+const fudge_fac = 0.1
+@benchmark Rmat(1,meas_ϵ; fudge_fac=fudge_fac)
+@benchmark Rinv(1, meas_ϵ; fudge_fac=fudge_fac)
 
 
 # fudge_fac = 0.1
@@ -321,7 +321,7 @@ function loss(u0a)
         verbose=false
     )
 
-    return 0.5*sum((W[:,j] .- ObsOpMeas(sol[:,j], idx_meas))' * Rinv(j, meas_ϵ) * (W[:,j] .- ObsOpMeas(sol[:,j], idx_meas)) for j ∈ axes(W,2))
+    return 0.5*sum((W[:,j] .- ObsOpMeas(sol[:,j], idx_meas))' * Rinv(j, meas_ϵ, fudge_fac=fudge_fac) * (W[:,j] .- ObsOpMeas(sol[:,j], idx_meas)) for j ∈ axes(W,2))
 end
 
 
@@ -330,7 +330,9 @@ end
 
 
 minimum(u₀[u₀ .> 0])
-u0a = u₀ .+ 5e8  # what's reasonable here?
+# u0a = u₀ .+ 5e8  # what's reasonable here?
+u0a = u₀ .+ 1e7
+
 
 optf = OptimizationFunction((x,p)->loss(x), Optimization.AutoZygote())
 opt_prob = Optimization.OptimizationProblem(optf, u0a, lb=zeros(size(u₀)), ub=1e50*ones(size(u₀))) #, ub= [Inf for _ ∈ 1:length(u₀)])
