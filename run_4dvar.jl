@@ -252,8 +252,9 @@ df_species
 #meas_ϵ = collect(df_number_densities[1, Not([measurements_to_ignore..., :t, :w_ap])])
 const meas_ϵ = Matrix(df_number_densities_ϵ[:, Not([measurements_to_ignore..., :t, :w_ap])])'
 
-const fudge_fac = 1.0
-#const fudge_fac = 0.2
+#const fudge_fac = 1.0
+#const fudge_fac = 0.5
+const fudge_fac = 0.25
 @benchmark Rmat(1,meas_ϵ; fudge_fac=fudge_fac)
 @benchmark Rinv(1, meas_ϵ; fudge_fac=fudge_fac)
 
@@ -289,15 +290,16 @@ minimum(u₀[u₀ .> 0])
 # u0a = u₀ .+ 5e8  # what's reasonable here?
 # u0a = u₀ .+ 1e7
 # u0a = u₀ .+ 1e9
-u0a = u₀ .+ 1000
+#u0a = u₀ .+ 1000
+u0a = u₀ .+ 1.0
 log_u0a = log.(u0a)
 
 
 const u0b = copy(u0a) # i.e. "background guess"
 # compute background covariance matrix
-const B = diagm((u₀ .+ 1) .^2)
+const B = diagm((fudge_fac .* (u₀ .+ 1)) .^2)
 const Binv = inv(B)
-
+println(Binv)
 
 
 function loss(log_u0a)
@@ -320,13 +322,23 @@ function loss(log_u0a)
     end
 
     # add in term for B
-    #l += 0.5*(u0a-u0b)'*Binv*(u0a-u0b)
+    # l += 0.5*(u0a-u0b)'*Binv*(u0a-u0b)
 
     return l
 end
 
+
+losses1 = []
+losses2 = []
 function callback(p, lossval)
     println("current loss: ", lossval)
+    push!(losses1, lossval)
+    false
+end
+
+function callback2(p, lossval)
+    println("current loss: ", lossval)
+    push!(losses2, lossval)
     false
 end
 
@@ -343,13 +355,22 @@ optf = OptimizationFunction((x,p)->loss(x), Optimization.AutoZygote())
 #opt_prob = Optimization.OptimizationProblem(optf, u0a, lb=zeros(size(u₀)), ub=1e50*ones(size(u₀))) #, ub= [Inf for _ ∈ 1:length(u₀)])
 opt_prob = Optimization.OptimizationProblem(optf, log_u0a)
 
-#opt_sol = solve(opt_prob, BFGS())
-#opt_sol = solve(opt_prob, LBFGS())
+opt_sol = solve(opt_prob,
+                ADAM(0.1);
+                maxiters=300,
+                callback=callback)
 
-opt_sol = solve(opt_prob, ADAM(0.1); maxiters=1000, callback=callback)
+# finish it off with the slower, but better BFGS
+prob2 = remake(opt_prob, u0=opt_sol.u)
+opt_sol = solve(prob2,
+                Optim.BFGS(initial_stepnorm=0.01);
+                callback=callback2,
+                allow_f_increases=false,
+                )
+
+# see example here: https://docs.sciml.ai/DiffEqFlux/stable/examples/neural_ode/
 
 u0a_final = exp.(opt_sol.u)
-
 
 
 u0a_final
@@ -360,6 +381,17 @@ df_species
 if !isdir("models/$model_name/4dvar")
     mkpath("models/$model_name/4dvar")
 end
+
+
+iterations1 = 1:length(losses1)
+iterations2 = (iterations1[end]+1):(iterations1[end]+length(losses2))
+plot(iterations1, losses1, xlabel="iteration", ylabel="loss", title="4D-Var Training", lw=3, label="ADAM")
+
+plot!(iterations2, losses2, lw=3, label="BFGS")
+savefig("models/$model_name/4dvar/training_loss.png")
+savefig("models/$model_name/4dvar/training_loss.pdf")
+
+
 
 df_out = DataFrame(:u₀ => u0a_final)
 CSV.write("models/$model_name/4dvar/u0.csv", df_out)
@@ -385,9 +417,10 @@ idx_meas
     times = tmin:Δt_step:tmax
     plot_spec_name = df_species[idx_meas[i], "MCM Name"]
     plot(times,
-        sol[idx_meas[i],:],
-        label="4dVar",
-        title=plot_spec_name,
+         sol[idx_meas[i],:],
+         label="4dVar",
+         title=plot_spec_name,
+         lw=3
         )
 
     scatter!(times, W[i,:],
@@ -401,7 +434,11 @@ idx_meas
     savefig("models/$model_name/4dvar/$(plot_spec_name).pdf")
 end
 
+idx_meas
+idx_not_meas = [idx for idx∈1:length(u₀) if !(idx∈idx_meas)]
+u0a_final[idx_not_meas] .- u₀[idx_not_meas]
+# u0a_final
 
-u0a_final
-
-
+i=idx_meas[1]
+u0a_final[idx_meas[1]]
+println(mean([sqrt(Rmat(t,meas_ϵ;fudge_fac=fudge_fac)[i,i]) for t ∈ 1:size(W,2)]))
