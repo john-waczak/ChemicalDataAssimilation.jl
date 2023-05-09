@@ -24,6 +24,7 @@ using BenchmarkTools
 # for optimization of 4dvar cost function
 using Optimization
 using OptimizationOptimJL
+using OptimizationFlux
 
 # for generating specialized matrix types
 using LinearAlgebra
@@ -31,7 +32,7 @@ using LinearAlgebra
 
 # --------------------------------------------------------------------------------------------------------------------------
 # Setup paths
-# --------------------------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------------
 
 mechpath = "mechanism-files/extracted/alkanes/methane.fac"
 model_name = "methane"
@@ -331,13 +332,21 @@ end
 
 minimum(u₀[u₀ .> 0])
 # u0a = u₀ .+ 5e8  # what's reasonable here?
-u0a = u₀ .+ 1e7
+# u0a = u₀ .+ 1e7
+u0a = u₀ .+ 1e5
 
 
 optf = OptimizationFunction((x,p)->loss(x), Optimization.AutoZygote())
 opt_prob = Optimization.OptimizationProblem(optf, u0a, lb=zeros(size(u₀)), ub=1e50*ones(size(u₀))) #, ub= [Inf for _ ∈ 1:length(u₀)])
+opt_prob = Optimization.OptimizationProblem(optf, u0a, lb=zeros(size(u₀)), ub=1e50*ones(size(u₀))) #, ub= [Inf for _ ∈ 1:length(u₀)])
+opt_prob
+#opt_sol = solve(opt_prob, BFGS())
+opt_sol = solve(opt_prob, LBFGS())
+#opt_sol = solve(opt_prob, ADAM(); maxiters=100)
 
-opt_sol = solve(opt_prob, BFGS())
+
+
+df_species
 
 opt_sol.original
 
@@ -383,7 +392,7 @@ idx_meas
         )
 
     scatter!(times, W[i,:],
-            yerror=[sqrt(Rmat(t,meas_ϵ)[i,i]) for t ∈ 1:size(W,2)],
+            yerror=[sqrt(Rmat(t,meas_ϵ;fudge_fac=fudge_fac)[i,i]) for t ∈ 1:size(W,2)],
             label="Measurements",
             )
     xlabel!("time [minutes]")
