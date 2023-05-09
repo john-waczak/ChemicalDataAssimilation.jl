@@ -32,11 +32,6 @@ generate_species_df("models/names.csv", fac_dict; model_name=model_name)
 df_species = CSV.File("models/$model_name/species.csv") |> DataFrame
 
 
-# # 2. load in measurements
-# lab_measurements = readdlm("models/measurement_names.csv", ',')
-# idx_meas = Bool.(lab_measurements[2,:])
-# mcm_name = lab_measurements[3, idx_meas]
-
 
 # . generate lookup table for M, O2, N2, H2O
 generate_densities("data/no_ap/number_densities.csv",

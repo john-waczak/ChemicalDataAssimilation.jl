@@ -109,6 +109,7 @@ function jac!(Jac, u, p, t)
     prod_temp = 1.0
 
     @inbounds for i ∈ 1:length(jacobian_terms)
+        prod_temp = 1.0  # <-- need to start fresh every time
         update_jacobian!(
             idx_t,
             Jac,
@@ -124,6 +125,7 @@ function jac!(Jac, u, p, t)
     prod_temp = 1.0
 
     @inbounds for i ∈ 1:length(jacobian_terms_ro2)
+        prod_temp = 1.0  # <-- need to start fresh every time
         update_jacobian!(
             idx_t,
             Jac,

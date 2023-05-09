@@ -217,8 +217,6 @@ tmax = maximum(ts)
 tspan = (tmin, tmax)
 tol = 1e-3
 
-#ode_prob = @time ODEProblem{true, SciMLBase.FullSpecialize}(rhs!, u₀, tspan)
-#fun = ODEFunction(rhs!; jac=jac!, jac_prototype=Jac)
 fun = ODEFunction(rhs!; jac=jac!, jac_prototype=jac_prototype)
 ode_prob = @time ODEProblem{true, SciMLBase.FullSpecialize}(fun, u₀, tspan)
 
@@ -234,7 +232,8 @@ sol = solve(
 
 
 # define R
-const fudge_fac = 0.1
+#const fudge_fac = 1.0
+const fudge_fac = 0.05
 
 const meas_ϵ = Matrix(df_nd_to_use_ϵ)'
 idx_meas_nonan = get_idxs_not_nans(meas_ϵ[:,end])
@@ -263,18 +262,14 @@ const Q = 0.0 * I(nrow(df_species))  # we're not including process noise for now
 
 # define covariance matrix and set it to some initial values
 const P = zeros(nrow(df_species), nrow(df_species))
+const P_diag = zeros(nrow(df_species), length(ts)) # i.e. P_diag[i] == P[i,i]
 
 fudge_prefac = 0.1
 for i ∈ 1:length(u₀)
     P[i,i] = (fudge_prefac * u₀[i])^2
+    P_diag[i,1] = P[i,i]
     #P[i,i] = (u₀[i])^2
 end
-
-
-# pre-allocate vector to contain diagonal entries (we will think about full matrix serialization later)
-const P_diag = zeros(nrow(df_species), length(ts)) # i.e. P_diag[i] == P[i,i]
-P_diag[:,1] .= [P[i,i] for i ∈ 1:length(u₀)]
-
 
 
 # preallocate kalman gain matrix
@@ -318,10 +313,8 @@ DM[1]
 
 # Assimilation Loop
 @showprogress for k ∈ 1:length(ts)-1  # because we always update the *next* value
-#for k ∈ 1:length(ts)-1  # because we always update the *next* value
-#for k ∈ 1:37
-#    println(k, " ", ts[k])
-#    k = 38  # for testing
+
+    k = 1
     u_now = uₐ[:,k]  # should preallocate this
 
     # --------------------------
@@ -330,6 +323,7 @@ DM[1]
 
     # run model forward one Δt
     u_next, DM = Zygote.withjacobian(model_forward!, u_now, ts[k])
+
     DM = DM[1]  # result is a 1-element tuple, so we index it
 
     # update the background covariance matrix
@@ -340,7 +334,8 @@ DM[1]
     # Analysis Step
     # --------------------------
 
-    is_meas_not_nan = get_idxs_not_nans(meas_ϵ[:,k+1])
+    #is_meas_not_nan = get_idxs_not_nans(meas_ϵ[:,k+1])
+    is_meas_not_nan = get_idxs_not_nans(W[:,k+1])
     idx_meas_nonan = idx_meas[is_meas_not_nan]
     u_h = Obs(u_next, idx_meas_nonan)
 
@@ -349,13 +344,13 @@ DM[1]
     denom = DH*P*DH' + Rmat_nonan(k+1, is_meas_not_nan, meas_ϵ; fudge_fac=fudge_fac)
 
     # A == X×B  --> X = A/B  (we'll use this one I think)
-    Kalman = P*DH'/denom
-    size(Kalman)
-#    Kalman = P*DH'*inv(denom)
+#    Kalman = P*DH'/denom
+#    size(Kalman)
+    Kalman = P*DH'*inv(denom)
 
-    # perform the analysis
+    u_next .= u_next .+ Kalman*(W[is_meas_not_nan, k+1] - u_h)
 
-    u_next .= u_next + Kalman*(W[is_meas_not_nan, k+1] - u_h)
+
     P .= (I(length(u_next)) - Kalman*DH)*P
 
     # filter negative values to zero
@@ -367,12 +362,12 @@ DM[1]
 end
 
 
-
 # convert final output into mixing ratios
 
-M = df_params.M .± df_params_ϵ.M
+M = df_params.M .± (fudge_fac .* df_params_ϵ.M)
 
 uₐ_nd = uₐ .± sqrt.(P_diag)
+
 
 
 uₐ_mr = copy(uₐ_nd)
@@ -384,7 +379,12 @@ end
 ua_mr_vals = Measurements.value.(uₐ_mr)
 ua_mr_ϵ = Measurements.uncertainty.(uₐ_mr)
 
-W_mr = W .± meas_ϵ
+ua_mr_vals[2,10]
+ua_mr_ϵ[2,10]
+
+
+
+W_mr = W .± (fudge_fac .* meas_ϵ)
 for i ∈ axes(W_mr, 1)
     W_mr[i,:] .= W_mr[i,:] ./ M
 end
@@ -404,7 +404,7 @@ end
 
     plot(
         ts,ua_mr_vals[i,:],
-        ribbon=ua_mr_vals[i,:],
+        ribbon=ua_mr_ϵ[i,:],
         xlabel="time [minutes]",
         ylabel="concentration [mixing ratio]",
         label="EKF",

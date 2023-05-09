@@ -172,6 +172,7 @@ function rhs!(du, u, p, t)
 
     # update derivatives
     @inbounds for i ∈ 1:length(derivatives)
+        prod_temp = 1.0  # <-- need to start fresh for each derivative
         update_derivative!(
             idx_t,
             du,
@@ -187,6 +188,7 @@ function rhs!(du, u, p, t)
     prod_temp = 1.0
 
     @inbounds for i ∈ 1:length(derivatives_ro2)
+        prod_temp = 1.0  # <-- need to start fresh for each derivative
         update_derivative!(
             idx_t,
             du,

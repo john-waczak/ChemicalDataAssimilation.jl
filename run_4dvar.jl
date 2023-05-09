@@ -240,26 +240,6 @@ sol = solve(
 #  Set Up Loss Function for 4dVar
 # --------------------------------------------------------------------------------------------------------------------------
 
-function sum_of_solution(u₀)
-    _prob = remake(ode_prob; u0=u₀)
-    sum(solve(_prob, CVODE_BDF(); saveat=15.0, reltol=tol, abstol=tol, sensealg=QuadratureAdjoint()))
-end
-
-
-# function sum_of_solution2(u₀)
-#     _prob = remake(ode_prob; u0=u₀)
-#     sum(solve(_prob, CVODE_BDF(); saveat=15.0, reltol=tol, abstol=tol, sensealg=InterpolatingAdjoint()))
-# end
-
-# function sum_of_solution3(u₀)
-#     _prob = remake(ode_prob; u0=u₀)
-#     sum(solve(_prob, CVODE_BDF(); saveat=15.0, reltol=tol, abstol=tol, sensealg=BacksolveAdjoint()))
-# end
-
-# quadrature adjoint seems best for now
-@btime Zygote.gradient(sum_of_solution, u₀)
-
-
 
 measurements_to_ignore
 
@@ -272,7 +252,8 @@ df_species
 #meas_ϵ = collect(df_number_densities[1, Not([measurements_to_ignore..., :t, :w_ap])])
 const meas_ϵ = Matrix(df_number_densities_ϵ[:, Not([measurements_to_ignore..., :t, :w_ap])])'
 
-const fudge_fac = 0.1
+const fudge_fac = 1.0
+#const fudge_fac = 0.2
 @benchmark Rmat(1,meas_ϵ; fudge_fac=fudge_fac)
 @benchmark Rinv(1, meas_ϵ; fudge_fac=fudge_fac)
 
@@ -302,15 +283,25 @@ size(W)
 res = ObsOpMeas(sol, idx_meas)
 W
 
-const u0b = copy(u₀)  # i.e. "background guess"
-u0a = u₀
 
+
+minimum(u₀[u₀ .> 0])
+# u0a = u₀ .+ 5e8  # what's reasonable here?
+# u0a = u₀ .+ 1e7
+# u0a = u₀ .+ 1e9
+u0a = u₀ .+ 1000
+log_u0a = log.(u0a)
+
+
+const u0b = copy(u0a) # i.e. "background guess"
 # compute background covariance matrix
-# const B = diagm(u0b .^2)  <-- not invertible!
-# const Binv = inv(B)
+const B = diagm((u₀ .+ 1) .^2)
+const Binv = inv(B)
 
 
-function loss(u0a)
+
+function loss(log_u0a)
+    u0a = exp.(log_u0a)
     _prob = remake(ode_prob; u0=u0a)
     sol = solve(
         _prob,
@@ -322,38 +313,46 @@ function loss(u0a)
         verbose=false
     )
 
-    return 0.5*sum((W[:,j] .- ObsOpMeas(sol[:,j], idx_meas))' * Rinv(j, meas_ϵ, fudge_fac=fudge_fac) * (W[:,j] .- ObsOpMeas(sol[:,j], idx_meas)) for j ∈ axes(W,2))
+
+    l = 0.0
+    for j ∈ axes(W,2)
+        l += 0.5 * ((W[:,j] .- ObsOpMeas(sol[:,j], idx_meas))' * Rinv(j, meas_ϵ; fudge_fac=fudge_fac) * (W[:,j] .- ObsOpMeas(sol[:,j], idx_meas)))[1]
+    end
+
+    # add in term for B
+    #l += 0.5*(u0a-u0b)'*Binv*(u0a-u0b)
+
+    return l
+end
+
+function callback(p, lossval)
+    println("current loss: ", lossval)
+    false
 end
 
 
+# @benchmark loss(log_u0a)
+loss(log_u0a)
+Zygote.gradient(loss, log_u0a)
 
-@benchmark loss(u₀)
 
-
-minimum(u₀[u₀ .> 0])
-# u0a = u₀ .+ 5e8  # what's reasonable here?
-# u0a = u₀ .+ 1e7
-u0a = u₀ .+ 1e5
-
+#ParameterHandling.value(u0a)
+#ParameterHandling.flatten(u0a)
 
 optf = OptimizationFunction((x,p)->loss(x), Optimization.AutoZygote())
-opt_prob = Optimization.OptimizationProblem(optf, u0a, lb=zeros(size(u₀)), ub=1e50*ones(size(u₀))) #, ub= [Inf for _ ∈ 1:length(u₀)])
-opt_prob = Optimization.OptimizationProblem(optf, u0a, lb=zeros(size(u₀)), ub=1e50*ones(size(u₀))) #, ub= [Inf for _ ∈ 1:length(u₀)])
-opt_prob
+#opt_prob = Optimization.OptimizationProblem(optf, u0a, lb=zeros(size(u₀)), ub=1e50*ones(size(u₀))) #, ub= [Inf for _ ∈ 1:length(u₀)])
+opt_prob = Optimization.OptimizationProblem(optf, log_u0a)
+
 #opt_sol = solve(opt_prob, BFGS())
-opt_sol = solve(opt_prob, LBFGS())
-#opt_sol = solve(opt_prob, ADAM(); maxiters=100)
+#opt_sol = solve(opt_prob, LBFGS())
+
+opt_sol = solve(opt_prob, ADAM(0.1); maxiters=1000, callback=callback)
+
+u0a_final = exp.(opt_sol.u)
 
 
 
-df_species
-
-opt_sol.original
-
-opt_sol
-u₀
-
-u0a_final = opt_sol.u
+u0a_final
 
 df_species
 # save output to a file
@@ -403,8 +402,6 @@ idx_meas
 end
 
 
+u0a_final
 
-
-# visualize the results
-df_species
 
