@@ -52,6 +52,7 @@ const Δt_step = 15.0  # time step in minutes
 
 df_species = CSV.File("models/$model_name/species.csv") |> DataFrame;
 df_params = CSV.File("models/$model_name/state_parameters.csv") |> DataFrame
+df_params_ϵ = CSV.File("models/$model_name/state_parameters_ϵ.csv") |> DataFrame
 df_number_densities = CSV.File("models/$model_name/number_densities.csv") |> DataFrame;
 df_number_densities_ϵ = CSV.File("models/$model_name/number_densities_ϵ.csv") |> DataFrame;
 
@@ -252,9 +253,9 @@ df_species
 #meas_ϵ = collect(df_number_densities[1, Not([measurements_to_ignore..., :t, :w_ap])])
 const meas_ϵ = Matrix(df_number_densities_ϵ[:, Not([measurements_to_ignore..., :t, :w_ap])])'
 
-#const fudge_fac = 1.0
+const fudge_fac = 1.0
 #const fudge_fac = 0.5
-const fudge_fac = 0.25
+#const fudge_fac = 0.25
 @benchmark Rmat(1,meas_ϵ; fudge_fac=fudge_fac)
 @benchmark Rinv(1, meas_ϵ; fudge_fac=fudge_fac)
 
@@ -409,36 +410,148 @@ sol = solve(
 )
 
 
+# try the whole thing again but starting with the final value from the assimilation
+u0a_adjusted =  copy(Matrix(sol)[:,end])
+for i ∈ 1:length(u₀)
+    if u₀[i] != 0.0
+        u0a_adjusted[i] = u₀[i]
+    end
+end
+
+u0a_adjusted
 
 
-idx_meas
+opt_prob = Optimization.OptimizationProblem(optf, log.(u0a_adjusted))
+opt_sol = solve(opt_prob,
+                ADAM(0.1);
+                maxiters=300,
+                callback=callback)
 
+# finish it off with the slower, but better BFGS
+prob2 = remake(opt_prob, u0=opt_sol.u)
+opt_sol = solve(prob2,
+                Optim.BFGS(initial_stepnorm=0.01);
+                callback=callback2,
+                allow_f_increases=false,
+                )
+
+u0a_adjusted = exp.(opt_sol.u)
+df_out = DataFrame(:u₀ => u0a_adjusted)
+CSV.write("models/$model_name/4dvar/u0_adjusted.csv", df_out)
+
+
+_prob = remake(ode_prob; u0=u0a_adjusted)
+sol = solve(
+    _prob,
+    CVODE_BDF();
+    saveat=Δt_step,
+    reltol=tol,
+    abstol=tol,
+    verbose=false
+)
+
+
+
+using Measurements
+
+
+u_sol = Matrix(sol)
+times = tmin:Δt_step:tmax
+
+
+
+spec_names = df_species[idx_meas, "MCM Name"]
+u_meas = u_sol[idx_meas,:]
+# collect total number density
+M = df_params[df_params.t .≤ 0.0, :M]
+M_ϵ = df_params_ϵ[df_params.t .≤ 0.0, :M]
+
+# convert number density to mixing ratio
+u_mr = copy(u_meas)
+for j ∈ axes(u_mr,2)
+    u_mr[:,j] .= u_mr[:,j] ./ M[j]
+end
+
+# convert to ppb
+u_ppb = u_mr .* 1e9
+
+
+# combine measurements w/ uncertainty
+W_ϵ = similar(W)
+for i ∈ 1:length(idx_meas)
+    W_ϵ[i,:] .= [sqrt.(Rmat(t, meas_ϵ; fudge_fac=fudge_fac)[i,i]) for t ∈ 1:size(W,2)]
+end
+
+# convert to mixing ratio
+W_mr = W .± W_ϵ
+for j ∈ axes(W_mr, 2)
+    W_mr[:,j] .= W_mr[:,j] ./ (M[j] ± M_ϵ[j])
+end
+
+# convert to ppb
+W_ppb = W_mr .* 1e9
+
+
+
+# # visualize the results:
+# @showprogress for i ∈ 1:length(idx_meas)
+#     times = tmin:Δt_step:tmax
+#     plot_spec_name = df_species[idx_meas[i], "MCM Name"]
+#     plot(times,
+#          sol[i,:],
+#          label="4dVar",
+#          title=plot_spec_name,
+#          lw=3
+#         )
+
+#     scatter!(times, W[i,:],
+#             yerror=[sqrt(Rmat(t,meas_ϵ;fudge_fac=fudge_fac)[i,i]) for t ∈ 1:size(W,2)],
+#             label="Measurements",
+#             )
+#     xlabel!("time [minutes]")
+#     ylabel!("concentration [molecules/cm³]")
+
+#     savefig("models/$model_name/4dvar/$(plot_spec_name).png")
+#     savefig("models/$model_name/4dvar/$(plot_spec_name).pdf")
+# end
+
+
+# visualize the results:
 @showprogress for i ∈ 1:length(idx_meas)
-    times = tmin:Δt_step:tmax
     plot_spec_name = df_species[idx_meas[i], "MCM Name"]
     plot(times,
-         sol[idx_meas[i],:],
+         u_ppb[i,:],
          label="4dVar",
          title=plot_spec_name,
          lw=3
-        )
+         )
 
-    scatter!(times, W[i,:],
-            yerror=[sqrt(Rmat(t,meas_ϵ;fudge_fac=fudge_fac)[i,i]) for t ∈ 1:size(W,2)],
-            label="Measurements",
-            )
+    scatter!(times,
+             Measurements.value.(W_ppb[i,:]),
+             yerror=Measurements.uncertainty.(W_ppb[i,:]),
+             label="Measurements",
+             )
     xlabel!("time [minutes]")
-    ylabel!("concentration [molecules/cm³]")
+    ylabel!("concentration [ppb]")
 
-    savefig("models/$model_name/4dvar/$(plot_spec_name).png")
-    savefig("models/$model_name/4dvar/$(plot_spec_name).pdf")
+    savefig("models/$model_name/4dvar/$(plot_spec_name)_ppb.png")
+    savefig("models/$model_name/4dvar/$(plot_spec_name)_ppb.pdf")
 end
 
-idx_meas
-idx_not_meas = [idx for idx∈1:length(u₀) if !(idx∈idx_meas)]
-u0a_final[idx_not_meas] .- u₀[idx_not_meas]
-# u0a_final
 
-i=idx_meas[1]
-u0a_final[idx_meas[1]]
-println(mean([sqrt(Rmat(t,meas_ϵ;fudge_fac=fudge_fac)[i,i]) for t ∈ 1:size(W,2)]))
+u0a_final .- u0a_adjusted
+
+
+# idx_meas
+# idx_not_meas = [idx for idx∈1:length(u₀) if !(idx∈idx_meas)]
+# u0a_final[idx_not_meas] .- u₀[idx_not_meas]
+# # u0a_final
+
+# i=idx_meas[1]
+# u0a_final[idx_meas[1]]
+# println(mean([sqrt(Rmat(t,meas_ϵ;fudge_fac=fudge_fac)[i,i]) for t ∈ 1:size(W,2)]))
+
+
+
+
+

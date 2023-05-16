@@ -104,6 +104,7 @@ function jac!(Jac, u, p, t)
     # get the current ro2_ratio
     ro2_ratio = sum(u₀[idx_ro2])
     ro2_ratio = ro2_ratio/RO2ᵢ
+    ro2_ratio = ro2_ratio > 0.0 ? ro2_ratio : 1.0  # make sure we don't have issues with ratio of 0
 
     # set up product temporary value:
     prod_temp = 1.0
