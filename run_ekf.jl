@@ -11,8 +11,8 @@ using Zygote, ForwardDiff
 using SciMLSensitivity
 using ProgressMeter
 using BenchmarkTools
-using Optimization
-using OptimizationOptimJL  # for ADAM
+#using Optimization
+#using OptimizationOptimJL  # for ADAM
 using LinearAlgebra
 using Measurements
 using SparseArrays
@@ -41,13 +41,12 @@ df_params_ϵ = CSV.File("models/$model_name/state_parameters_ϵ.csv") |> DataFra
 df_number_densities = CSV.File("models/$model_name/number_densities.csv") |> DataFrame;
 df_number_densities_ϵ = CSV.File("models/$model_name/number_densities_ϵ.csv") |> DataFrame;
 
-
 # --------------------------------------------------------------------------------------------------------------------------
 # Generate Initial Conditions
 # --------------------------------------------------------------------------------------------------------------------------
 
-#df_u₀ = CSV.File("models/$model_name/4dvar/u0.csv") |> DataFrame
-df_u₀ = CSV.File("models/$model_name/4dvar/u0_adjusted.csv") |> DataFrame
+df_u₀ = CSV.File("models/$model_name/4dvar/u0.csv") |> DataFrame
+#df_u₀ = CSV.File("models/$model_name/4dvar/u0_adjusted.csv") |> DataFrame
 u₀ = df_u₀.u₀
 @assert typeof(u₀) == Vector{Float64}
 
@@ -65,6 +64,16 @@ ro2_sum = sum(u₀[idx_ro2])
 # --------------------------------------------------------------------------------------------------------------------------
 
 df_rrate_coeffs_mech = CSV.File("./models/$model_name/rrate_coeffs_mech.csv") |> DataFrame;
+
+# df_rrate_coeffs_mech
+# for i ∈ 1:length(rxns)
+#     println(i, "\t", rxns[i])
+# end
+# df_rrate_coeffs_mech[:, :k_39]
+# df_photolysis = CSV.File("models/$model_name/photolysis_rates.csv") |> DataFrame
+
+
+# make sure every entry is a Float64
 for i ∈ 3:ncol(df_rrate_coeffs_mech)
     if eltype(df_rrate_coeffs_mech[:,i]) != Float64
         println("Fixing ", names(df_rrate_coeffs_mech)[i])
@@ -85,7 +94,7 @@ is_meas_in_mechanism = [spec ∈ df_species[!, "MCM Name"] for spec ∈ names(df
 df_nd_to_use = df_number_densities[:, Not([:t, :w_ap])]
 df_nd_to_use = df_nd_to_use[:, is_meas_in_mechanism]
 
-df_nd_to_use_ϵ = df_number_densities[:, Not([:t, :w_ap])]
+df_nd_to_use_ϵ = df_number_densities_ϵ[:, Not([:t, :w_ap])]
 df_nd_to_use_ϵ = df_nd_to_use_ϵ[:, is_meas_in_mechanism]
 
 for spec_name ∈ names(df_nd_to_use)
@@ -109,7 +118,8 @@ const jacobian_terms_ro2::Vector{ChemicalDataAssimilation.JacobianTermRO2} = Che
 const RO2ᵢ::Float64 =ro2_sum > 0.0 ? ro2_sum : 1.0  # make sure we have at least "1 particle" in RO2 sum to prevent division issues
 const K_matrix::Matrix{Float64} = Matrix{Float64}(df_rrate_coeffs_mech[:, 3:end])
 const ts::Vector{Float64} = df_rrate_coeffs_mech.t
-const fudge_fac::Float64 = 0.5  # for measurement uncertainty
+#const fudge_fac::Float64 = 0.5  # for measurement uncertainty
+const fudge_fac::Float64 = 1.0  # for measurement uncertainty
 const meas_ϵ::Matrix{Float64} = Matrix(df_nd_to_use_ϵ)'
 const W::Matrix{Float64} = Matrix(df_nd_to_use)'
 const P::Matrix{Float64} = zeros(nrow(df_species), nrow(df_species))
@@ -262,7 +272,7 @@ const DM::Matrix{Float64} = DM_test[1]
     # k=2
 
     # collect current model estimate
-    u_now = uₐ[:,k]  # should preallocate this
+    u_now .= uₐ[:,k]  # should preallocate this
 
     # --------------------------
     # Forecast Step
@@ -347,29 +357,24 @@ const DM::Matrix{Float64} = DM_test[1]
 end
 
 
-
-# convert final output into mixing ratios
-
-M = df_params.M .± (fudge_fac .* df_params_ϵ.M)
-
+# combine output w/ uncertainty from diagonal
 uₐ_nd = uₐ .± sqrt.(P_diag)
 
-
+# convert final output into mixing ratios
+M = df_params.M .± (fudge_fac .* df_params_ϵ.M)
 
 uₐ_mr = copy(uₐ_nd)
 for i ∈ axes(uₐ_mr, 1)
+    # for each species, divide by time-dependent total-number density to get mixing ratio
     uₐ_mr[i,:] .= uₐ_mr[i,:] ./ M
 end
 
-
+# chop off values and uncertainties for easier plotting
 ua_mr_vals = Measurements.value.(uₐ_mr)
 ua_mr_ϵ = Measurements.uncertainty.(uₐ_mr)
 
-ua_mr_vals[2,10]
-ua_mr_ϵ[2,10]
 
-
-
+# combine measurements with uncertainties
 W_mr = W .± (fudge_fac .* meas_ϵ)
 for i ∈ axes(W_mr, 1)
     W_mr[i,:] .= W_mr[i,:] ./ M
@@ -413,7 +418,7 @@ end
     savefig("models/$model_name/EKF/$(plot_spec_name).png")
     savefig("models/$model_name/EKF/$(plot_spec_name).pdf")
 
-    if plot_spec_name == "OH" || plot_spec_name == "HO2"
+    if plot_spec_name ∈ ["OH", "HO2", "O", "O1D"]
         println(ua_mr_vals[i,:])
         plot(
             ts,
@@ -434,4 +439,12 @@ end
 
 
 end
+
+
+df_species
+
+println(mean(ua_mr_vals[8,:]))
+println(median(ua_mr_vals[8,:]))
+println(maximum(ua_mr_vals[8,:]))
+println(minimum(ua_mr_vals[8,:]))
 

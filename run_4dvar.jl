@@ -1,34 +1,18 @@
 using ChemicalDataAssimilation
-
-# file reading
 using DelimitedFiles, CSV, DataFrames
-
-# visualization
 using Plots, StatsPlots
-
-# for mean, std, and var functions
 using Statistics
-
-# for ODE problem and integration
 using DifferentialEquations
 using Sundials
-
-# for autodiff of ODE problem solutions
 using Zygote, ForwardDiff
 using SciMLSensitivity
-
-# convenience packages
 using ProgressMeter
 using BenchmarkTools
-
-# for optimization of 4dvar cost function
 using Optimization
 using OptimizationOptimJL
 using OptimizationFlux
-
-# for generating specialized matrix types
 using LinearAlgebra
-
+using SparseArrays
 
 # --------------------------------------------------------------------------------------------------------------------------
 # Setup paths
@@ -48,7 +32,6 @@ end
 
 fac_dict = read_fac_file(mechpath)
 
-const Δt_step = 15.0  # time step in minutes
 
 df_species = CSV.File("models/$model_name/species.csv") |> DataFrame;
 df_params = CSV.File("models/$model_name/state_parameters.csv") |> DataFrame
@@ -56,15 +39,10 @@ df_params_ϵ = CSV.File("models/$model_name/state_parameters_ϵ.csv") |> DataFra
 df_number_densities = CSV.File("models/$model_name/number_densities.csv") |> DataFrame;
 df_number_densities_ϵ = CSV.File("models/$model_name/number_densities_ϵ.csv") |> DataFrame;
 
-# df_photolysis = CSV.File("models/$model_name/photolysis_rates.csv") |> DataFrame
-# df_rrate_coeffs = CSV.File("./models/$model_name/rrate_coeffs.csv") |> DataFrame;
-
-
 # --------------------------------------------------------------------------------------------------------------------------
 # Generate Initial Conditions
 # --------------------------------------------------------------------------------------------------------------------------
 
-df_number_densities
 measurements_to_ignore = [:C2H6]  # skip any with nans
 
 init_path = "./mechanism-files/initial_concentrations/full.txt"
@@ -73,8 +51,7 @@ init_path = "./mechanism-files/initial_concentrations/full.txt"
 init_dict = generate_init_dict(init_path, df_params.M[1])
 u₀    = zeros(Float64, nrow(df_species))
 
-names(df_species)
-
+# first set values based on MCM defaults
 for (key, val) ∈ init_dict
     try
         println("$(key): $(val)")
@@ -87,8 +64,8 @@ for (key, val) ∈ init_dict
     end
 end
 
+# next update with initial values of our measured species
 df_nd_init = df_number_densities[1, Not([measurements_to_ignore..., :t])]
-
 for name ∈ names(df_nd_init)
     if name ∈ df_species[:, "MCM Name"]
         idx = df_species[df_species[:, "MCM Name"] .== name, :].idx_species[1]
@@ -98,15 +75,19 @@ for name ∈ names(df_nd_init)
     end
 end
 
+for i ∈ axes(u₀,1)
+    println(df_species[i,"MCM Name"], ":\t\t\t", u₀[i])
+end
+
 
 # --------------------------------------------------------------------------------------------------------------------------
 # Get RO₂ indices and initial value
 # --------------------------------------------------------------------------------------------------------------------------
+
 include("./models/$model_name/ro2.jl")
 idx_ro2  # this is the array w/ ro2 indices
-
 ro2_sum = sum(u₀[idx_ro2])
-const RO2ᵢ =ro2_sum > 0 ? ro2_sum : 1.0  # make sure we have at least "1 particle"
+
 
 
 # --------------------------------------------------------------------------------------------------------------------------
@@ -114,6 +95,8 @@ const RO2ᵢ =ro2_sum > 0 ? ro2_sum : 1.0  # make sure we have at least "1 parti
 # --------------------------------------------------------------------------------------------------------------------------
 
 df_rrate_coeffs_mech = CSV.File("./models/$model_name/rrate_coeffs_mech.csv") |> DataFrame;
+
+# make sure everything is a Float64
 for i ∈ 3:ncol(df_rrate_coeffs_mech)
     if eltype(df_rrate_coeffs_mech[:,i]) != Float64
         println("Fixing ", names(df_rrate_coeffs_mech)[i])
@@ -123,12 +106,61 @@ end
 
 
 # --------------------------------------------------------------------------------------------------------------------------
+# Get measurement indices
+# --------------------------------------------------------------------------------------------------------------------------
+
+const idx_meas::Vector{Int} = Int[]
+
+is_meas_in_mechanism = [spec ∈ df_species[!, "MCM Name"] for spec ∈ names(df_number_densities[:, Not([measurements_to_ignore..., :t, :w_ap])])]
+
+idx_ts_to_use = df_params.t .≤ 0.0
+df_nd_to_use = df_number_densities[idx_ts_to_use, Not([measurements_to_ignore..., :t, :w_ap])]
+df_nd_to_use_ϵ = df_number_densities_ϵ[idx_ts_to_use, Not([measurements_to_ignore..., :t, :w_ap])]
+
+for spec_name ∈ names(df_nd_to_use)
+    println(spec_name)
+    push!(idx_meas, df_species[df_species[!, "MCM Name"] .== spec_name, :idx_species][1])
+end
+
+idx_meas
+
+
+# --------------------------------------------------------------------------------------------------------------------------
+# Setup constants, preallocated vectors, preallocated arrays, etc...
+# --------------------------------------------------------------------------------------------------------------------------
+const Δt_step::Float64 = 15.0  # time step in minutes
+const rxns::Array{ChemicalDataAssimilation.Reaction} = ChemicalDataAssimilation.Reaction[]
+const derivatives::Vector{ChemicalDataAssimilation.DerivativeTerm} = ChemicalDataAssimilation.DerivativeTerm[]
+const derivatives_ro2::Vector{ChemicalDataAssimilation.DerivativeTermRO2} = ChemicalDataAssimilation.DerivativeTermRO2[]
+const jacobian_terms::Vector{ChemicalDataAssimilation.JacobianTerm} = ChemicalDataAssimilation.JacobianTerm[]
+const jacobian_terms_ro2::Vector{ChemicalDataAssimilation.JacobianTermRO2} = ChemicalDataAssimilation.JacobianTermRO2[]
+const RO2ᵢ::Float64 =ro2_sum > 0.0 ? ro2_sum : 1.0  # make sure we have at least "1 particle" in RO2 sum to prevent division issues
+const K_matrix::Matrix{Float64} = Matrix{Float64}(df_rrate_coeffs_mech[:, 3:end])
+const ts::Vector{Float64} = df_rrate_coeffs_mech.t
+const fudge_fac::Float64 = 0.5  # for measurement uncertainty
+const meas_ϵ::Matrix{Float64} = Matrix(df_nd_to_use_ϵ)'
+const W::Matrix{Float64} = Matrix(df_nd_to_use)'
+
+const tmin::Float64 = minimum(ts)
+const tmax::Float64 = 0.0 # maximum(ts)
+const tol::Float64 = 1e-3
+const tspan = (tmin, tmax)
+
+const ϵ::Float64 = 1.0
+const ϵ_min::Float64 = 1e-12
+
+
+const try_solve::Bool = true
+const use_background_cov::Bool = false
+
+
+# --------------------------------------------------------------------------------------------------------------------------
 # Generate reactions, derivatives, jacobians
 # --------------------------------------------------------------------------------------------------------------------------
 
 # create vector of reaction objects
 species, reactions = parse_rxns(fac_dict["reaction_definitions"])
-const rxns = ChemicalDataAssimilation.Reaction[]
+
 @showprogress for i ∈ 1:length(reactions)
     try
         push!(rxns, parse_rxn(reactions[i], i, df_species))
@@ -144,8 +176,6 @@ println("num reactions: ", length(rxns))
 @assert length(rxns) == length(reactions)
 
 # create derivative list
-const derivatives = ChemicalDataAssimilation.DerivativeTerm[]
-const derivatives_ro2 = ChemicalDataAssimilation.DerivativeTermRO2[]
 @showprogress for rxn ∈ rxns
     dts = DerivativeTerms(rxn)
     if eltype(dts) <: ChemicalDataAssimilation.DerivativeTerm
@@ -163,8 +193,6 @@ println("num derivative terms: ", length(derivatives) + length(derivatives_ro2))
 
 
 # create jacobian list
-const jacobian_terms = ChemicalDataAssimilation.JacobianTerm[]
-const jacobian_terms_ro2 = ChemicalDataAssimilation.JacobianTermRO2[]
 @showprogress for drxn ∈ derivatives
     j_terms = JacobianTerms(drxn)
     for j_term ∈ j_terms
@@ -185,17 +213,6 @@ println("num jacobian terms: ", size(jacobian_terms,1) + size(jacobian_terms_ro2
 
 
 # --------------------------------------------------------------------------------------------------------------------------
-# Generate lookup table for reaction rate coefficients and time values
-# --------------------------------------------------------------------------------------------------------------------------
-
-const K_matrix = Matrix{Float64}(df_rrate_coeffs_mech[:, 3:end])
-const ts = df_rrate_coeffs_mech.t
-
-@assert size(K_matrix, 1) == length(ts)
-@assert size(K_matrix, 2) == length(rxns)
-
-
-# --------------------------------------------------------------------------------------------------------------------------
 # Get rhs and jacobian functions, generate jacobian prototype sparse matrix
 # --------------------------------------------------------------------------------------------------------------------------
 include("models/$model_name/rhs.jl")
@@ -207,6 +224,9 @@ rhs!(du, u₀, nothing, -180.0)
 
 jac_prototype = generate_jac_prototype(jacobian_terms, jacobian_terms_ro2)
 
+
+println("jacobian non-zero percentage: $(length(nonzeros(jac_prototype))/length(jac_prototype)*100)%")
+
 jac!(jac_prototype, u₀, nothing, 1.0)
 
 
@@ -215,25 +235,12 @@ jac!(jac_prototype, u₀, nothing, 1.0)
 #  Set up ODE Defaults
 # --------------------------------------------------------------------------------------------------------------------------
 
-tmin = minimum(ts)
-#tmax = maximum(ts)
-tmax = 0.0  # only go until t=0 for 4dVar
-tspan = (tmin, tmax)
-tol = 1e-3
-
-#ode_prob = @time ODEProblem{true, SciMLBase.FullSpecialize}(rhs!, u₀, tspan)
-#fun = ODEFunction(rhs!; jac=jac!, jac_prototype=Jac)
 fun = ODEFunction(rhs!; jac=jac!, jac_prototype=jac_prototype)
 ode_prob = @time ODEProblem{true, SciMLBase.FullSpecialize}(fun, u₀, tspan)
 
-
-sol = solve(
-    ode_prob,
-    CVODE_BDF();
-    saveat=15.0,
-    reltol=tol,
-    abstol=tol,
-);
+if try_solve
+    sol = solve(ode_prob, CVODE_BDF(); saveat=15.0, reltol=tol, abstol=tol);
+end
 
 
 
@@ -241,71 +248,40 @@ sol = solve(
 #  Set Up Loss Function for 4dVar
 # --------------------------------------------------------------------------------------------------------------------------
 
-
-measurements_to_ignore
-
-idx_ts_to_use = ts .≤ 0.0
-df_nd_to_use = df_number_densities[idx_ts_to_use, Not([measurements_to_ignore..., :t, :w_ap])]
-df_species
-
-
-# set up measurement covariance matrix
-#meas_ϵ = collect(df_number_densities[1, Not([measurements_to_ignore..., :t, :w_ap])])
-const meas_ϵ = Matrix(df_number_densities_ϵ[:, Not([measurements_to_ignore..., :t, :w_ap])])'
-
-const fudge_fac = 1.0
-#const fudge_fac = 0.5
-#const fudge_fac = 0.25
 @benchmark Rmat(1,meas_ϵ; fudge_fac=fudge_fac)
 @benchmark Rinv(1, meas_ϵ; fudge_fac=fudge_fac)
 
 
-# fudge_fac = 0.1
-# fudge_fac = 1.0
-# const R = diagm( (fudge_fac .* meas_ϵ) .^ 2)
-# const Rinv = inv(R)
-
-# σ_b = 0.1
-# B = diagm( σ_b^2 .* u₀ .^ 2)
-
-
-const idx_meas = Int[]
-for spec_name ∈ names(df_nd_to_use)
-    push!(idx_meas, df_species[df_species[!, "MCM Name"] .== spec_name, :idx_species][1])
-end
-
-size(sol)
-
-
-W = collect(Matrix(df_nd_to_use)')  # make it match the shape of solution object which is (n_dims, n_times)
-size(W)
 @assert eltype(W) == Float64
 @assert size(W,1) == length(idx_meas)
 
-res = ObsOpMeas(sol, idx_meas)
-W
+# try out observation operator
+if try_solve
+    res = ObsOpMeas(sol[1], idx_meas)
+end
 
 
-
-minimum(u₀[u₀ .> 0])
-# u0a = u₀ .+ 5e8  # what's reasonable here?
-# u0a = u₀ .+ 1e7
-# u0a = u₀ .+ 1e9
-#u0a = u₀ .+ 1000
+# create initial analysis vector with small offset
 u0a = u₀ .+ 1.0
+
+# we optimize the logarithm instead to force
+# concentrations to stay positive
 log_u0a = log.(u0a)
 
-
-const u0b = copy(u0a) # i.e. "background guess"
 # compute background covariance matrix
-const B = diagm((fudge_fac .* (u₀ .+ 1)) .^2)
-const Binv = inv(B)
-println(Binv)
+const u0b::Vector{Float64} = copy(u0a) # i.e. "background guess"
+const B::Matrix{Float64} = diagm((ϵ .* (u₀)) .^2  .+ ϵ_min^2)
+const Binv::Matrix{Float64} = inv(B)
 
 
 function loss(log_u0a)
+    # first convert back to number density
     u0a = exp.(log_u0a)
+
+    # remake problem using current value
     _prob = remake(ode_prob; u0=u0a)
+
+    # integrate the model forward
     sol = solve(
         _prob,
         CVODE_BDF();
@@ -316,21 +292,37 @@ function loss(log_u0a)
         verbose=false
     )
 
-
+    # compute loss
     l = 0.0
+
     for j ∈ axes(W,2)
-        l += 0.5 * ((W[:,j] .- ObsOpMeas(sol[:,j], idx_meas))' * Rinv(j, meas_ϵ; fudge_fac=fudge_fac) * (W[:,j] .- ObsOpMeas(sol[:,j], idx_meas)))[1]
+        l += 0.5 * ((W[:,j] .- ObsOpMeas(sol[j], idx_meas))' * Rinv(j, meas_ϵ; fudge_fac=fudge_fac) * (W[:,j] .- ObsOpMeas(sol[j], idx_meas)))[1]
     end
 
-    # add in term for B
-    # l += 0.5*(u0a-u0b)'*Binv*(u0a-u0b)
+    # optionally, add additional loss term quantifying our belief in the inital condition vector
+    if use_background_cov
+        l += 0.5*(u0a-u0b)'*Binv*(u0a-u0b)
+    end
 
     return l
 end
 
+loss(log_u0a)
 
-losses1 = []
-losses2 = []
+
+if try_solve
+    @benchmark loss(log_u0a)
+end
+
+
+
+# --------------------------------------------------------------------------------------------------------------------------
+#  Solve the Optimization Problem
+# --------------------------------------------------------------------------------------------------------------------------
+
+
+losses1::Vector{Float64} = []
+losses2::Vector{Float64} = []
 function callback(p, lossval)
     println("current loss: ", lossval)
     push!(losses1, lossval)
@@ -344,18 +336,17 @@ function callback2(p, lossval)
 end
 
 
-# @benchmark loss(log_u0a)
-loss(log_u0a)
-Zygote.gradient(loss, log_u0a)
+if try_solve
+    Zygote.gradient(loss, log_u0a)
+end
 
 
-#ParameterHandling.value(u0a)
-#ParameterHandling.flatten(u0a)
-
+# define the optimization function and declare we are using Zygote for AutoGrad
 optf = OptimizationFunction((x,p)->loss(x), Optimization.AutoZygote())
-#opt_prob = Optimization.OptimizationProblem(optf, u0a, lb=zeros(size(u₀)), ub=1e50*ones(size(u₀))) #, ub= [Inf for _ ∈ 1:length(u₀)])
 opt_prob = Optimization.OptimizationProblem(optf, log_u0a)
 
+
+# solve first with ADAM which is fast but can get stuck in local minimum
 opt_sol = solve(opt_prob,
                 ADAM(0.1);
                 maxiters=300,
@@ -371,8 +362,12 @@ opt_sol = solve(prob2,
 
 # see example here: https://docs.sciml.ai/DiffEqFlux/stable/examples/neural_ode/
 
+
 u0a_final = exp.(opt_sol.u)
 
+for i ∈ axes(u0a_final, 1)
+    println(df_species[i, "MCM Name"], "\t\t", u0a_final[i])
+end
 
 u0a_final
 
@@ -387,14 +382,16 @@ end
 iterations1 = 1:length(losses1)
 iterations2 = (iterations1[end]+1):(iterations1[end]+length(losses2))
 plot(iterations1, losses1, xlabel="iteration", ylabel="loss", title="4D-Var Training", lw=3, label="ADAM")
-
 plot!(iterations2, losses2, lw=3, label="BFGS")
+
 savefig("models/$model_name/4dvar/training_loss.png")
 savefig("models/$model_name/4dvar/training_loss.pdf")
 
 
 
 df_out = DataFrame(:u₀ => u0a_final)
+df_out
+
 CSV.write("models/$model_name/4dvar/u0.csv", df_out)
 
 
@@ -411,31 +408,36 @@ sol = solve(
 
 
 # try the whole thing again but starting with the final value from the assimilation
-u0a_adjusted =  copy(Matrix(sol)[:,end])
+u0a_adjusted =  copy(sol[end])
 for i ∈ 1:length(u₀)
-    if u₀[i] != 0.0
+    if u₀[i] > 1.0
+        println("\tcurrent:\t", u0a_adjusted[i])
         u0a_adjusted[i] = u₀[i]
+        println("\tfinal:\t", u0a_adjusted[i])
     end
 end
 
-u0a_adjusted
 
+for i ∈ axes(u0a_adjusted, 1)
+    println(i, "\t", df_species[i, "MCM Name"], "\t\t", u0a_adjusted[i])
+end
 
-opt_prob = Optimization.OptimizationProblem(optf, log.(u0a_adjusted))
-opt_sol = solve(opt_prob,
-                ADAM(0.1);
-                maxiters=300,
-                callback=callback)
+# # do optimzation on these adjusted values...
+# opt_prob = Optimization.OptimizationProblem(optf, log.(u0a_adjusted))
+# opt_sol = solve(opt_prob,
+#                 ADAM(0.1);
+#                 maxiters=300,
+#                 callback=callback)
 
-# finish it off with the slower, but better BFGS
-prob2 = remake(opt_prob, u0=opt_sol.u)
-opt_sol = solve(prob2,
-                Optim.BFGS(initial_stepnorm=0.01);
-                callback=callback2,
-                allow_f_increases=false,
-                )
+# # finish it off with the slower, but better BFGS
+# prob2 = remake(opt_prob, u0=opt_sol.u)
+# opt_sol = solve(prob2,
+#                 Optim.BFGS(initial_stepnorm=0.01);
+#                 callback=callback2,
+#                 allow_f_increases=false,
+#                 )
+#u0a_adjusted = exp.(opt_sol.u)
 
-u0a_adjusted = exp.(opt_sol.u)
 df_out = DataFrame(:u₀ => u0a_adjusted)
 CSV.write("models/$model_name/4dvar/u0_adjusted.csv", df_out)
 
@@ -451,6 +453,10 @@ sol = solve(
 )
 
 
+
+# --------------------------------------------------------------------------------------------------------------------------
+#  convert final solution to mixing ratios
+# --------------------------------------------------------------------------------------------------------------------------
 
 using Measurements
 
@@ -493,30 +499,10 @@ W_ppb = W_mr .* 1e9
 
 
 
-# # visualize the results:
-# @showprogress for i ∈ 1:length(idx_meas)
-#     times = tmin:Δt_step:tmax
-#     plot_spec_name = df_species[idx_meas[i], "MCM Name"]
-#     plot(times,
-#          sol[i,:],
-#          label="4dVar",
-#          title=plot_spec_name,
-#          lw=3
-#         )
+# --------------------------------------------------------------------------------------------------------------------------
+#  Generate plots
+# --------------------------------------------------------------------------------------------------------------------------
 
-#     scatter!(times, W[i,:],
-#             yerror=[sqrt(Rmat(t,meas_ϵ;fudge_fac=fudge_fac)[i,i]) for t ∈ 1:size(W,2)],
-#             label="Measurements",
-#             )
-#     xlabel!("time [minutes]")
-#     ylabel!("concentration [molecules/cm³]")
-
-#     savefig("models/$model_name/4dvar/$(plot_spec_name).png")
-#     savefig("models/$model_name/4dvar/$(plot_spec_name).pdf")
-# end
-
-
-# visualize the results:
 @showprogress for i ∈ 1:length(idx_meas)
     plot_spec_name = df_species[idx_meas[i], "MCM Name"]
     plot(times,
@@ -537,21 +523,4 @@ W_ppb = W_mr .* 1e9
     savefig("models/$model_name/4dvar/$(plot_spec_name)_ppb.png")
     savefig("models/$model_name/4dvar/$(plot_spec_name)_ppb.pdf")
 end
-
-
-u0a_final .- u0a_adjusted
-
-
-# idx_meas
-# idx_not_meas = [idx for idx∈1:length(u₀) if !(idx∈idx_meas)]
-# u0a_final[idx_not_meas] .- u₀[idx_not_meas]
-# # u0a_final
-
-# i=idx_meas[1]
-# u0a_final[idx_meas[1]]
-# println(mean([sqrt(Rmat(t,meas_ϵ;fudge_fac=fudge_fac)[i,i]) for t ∈ 1:size(W,2)]))
-
-
-
-
 

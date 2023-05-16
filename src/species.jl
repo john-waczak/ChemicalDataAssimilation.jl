@@ -66,6 +66,12 @@ function get_species_df(df_names::DataFrame, species::Vector{String})
                 continue
             end
         end
+
+        if  row["MCM Name"] == "OH"
+            println("\tsetting OH ⟶ OH")
+            row.formula = "OH"
+        end
+
     end
 
     # update common ones

@@ -29,7 +29,7 @@ function generate_ro2(fac_dict::Dict; model_name::String="mcm")
     end
 
     # RO2_string = "idx_ro2 = [" * join(ro2_idxs, ",") * "]"
-    RO2_string = "const idx_ro2 = [" * join(ro2_idxs, ",") * "]"
+    RO2_string = "const idx_ro2::Vector{Int} = [" * join(ro2_idxs, ",") * "]"
     open(outpath, "w") do f
         println(f, RO2_string)
     end

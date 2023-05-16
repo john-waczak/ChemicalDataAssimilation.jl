@@ -1,1 +1,1 @@
-const idx_ro2 = [23]
+const idx_ro2::Vector{Int} = [23]

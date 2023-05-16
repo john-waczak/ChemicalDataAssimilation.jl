@@ -25,7 +25,7 @@ fac_dict["complex_rate_coefficients"]
 fac_dict["peroxy_radicals"]
 fac_dict["reaction_definitions"]
 
-const Δt_step = 15.0  # time step in minutes
+const Δt_step::Float64 = 15.0  # time step in minutes
 
 # 1. generate species indices, names, etc...
 generate_species_df("models/names.csv", fac_dict; model_name=model_name)
@@ -50,6 +50,17 @@ generate_photolysis_rates("data/no_ap/photolysis_rates.csv",
                           Δt_step=Δt_step
                           )
 df_photolysis = CSV.File("models/$model_name/photolysis_rates.csv") |> DataFrame
+
+
+photolysis_fudge_fac = 1e6
+for colname ∈ names(df_photolysis)
+    df_photolysis[!,colname] .= df_photolysis[!,colname] .* photolysis_fudge_fac
+end
+
+df_photolysis
+
+
+describe(df_photolysis)
 
 
 # 3. Generate lookup table for generic/complex rate coefficients
@@ -134,107 +145,12 @@ fac_dict["reaction_definitions"][1]
 species, reactions = parse_rxns(fac_dict["reaction_definitions"])
 size(reactions)
 
-rxns = ChemicalDataAssimilation.Reaction[]
-@showprogress for i ∈ 1:length(reactions)
-    try
-        push!(rxns, parse_rxn(reactions[i], i, df_species))
-    catch e
-        println(reactions[i])
-        println("\n")
-        println(e)
-        break
-    end
-end
-
 
 rxns = generate_reaction_list(fac_dict, df_species)
+
 
 # generate stoichiometry matrix for later visualization
 spec_list, N = generate_stoich_mat(
     fac_dict,
     model_name=model_name
 )
-
-
-# generate derivative list
-
-rxns[1].idxs_in
-rxns[1].idxs_out
-rxns[1].idx_k
-rxns[1].needs_ro2
-
-derivatives = ChemicalDataAssimilation.DerivativeTerm[]
-@showprogress for rxn ∈ rxns
-    dts = DerivativeTerms(rxn)
-    for dt ∈ dts
-        push!(derivatives, dt)
-    end
-end
-
-length(derivatives)
-
-
-
-# generate ODE RHS function
-
-
-# we should define a function, get_row_index(t::Float64) to return the index given an input time... NOTE: will this be differentiable?
-
-
-
-# using BenchmarkTools
-
-# const K_matrix = Matrix{Float64}(df_rrate_coeffs_mech[:, 3:end])
-# typeof(K_matrix)
-# @benchmark 1.0 * K_matrix[1,1]
-
-
-# tval = -180.0
-# idx_t = 0
-# ro2_ratio = 1.0
-
-# function rhs(du, u, p, t)
-#     # set everything to sero
-#     du .= 0.0
-
-#     # get the time index
-#     _, idx_t = findmin(x -> abs.(x.- t), df_rrate_coeffs_mech.t)
-
-#     # get the current ro2_ratio
-#     ro2_ratio = sum(u₀[idx_ro2])/RO2ᵢ
-
-#     # update
-#     for derivative ∈ derivatives
-#         update_derivative!(
-#             idx_t,
-#             du,
-#             u,
-#             derivative,
-#             ro2_ratio,
-#             K_matrix,
-#             Δt_step
-#         )
-#     end
-# end
-
-
-# du = copy(u₀)
-# @benchmark rhs(du, u₀, nothing, 1.0)
-
-# tmin = minimum(df_rrate_coeffs_mech.t)
-# tmax = maximum(df_rrate_coeffs_mech.t)
-
-# tspan = (tmin, tmax)
-
-# ode_prob = @time ODEProblem{true, SciMLBase.FullSpecialize}(rhs, u₀, tspan)
-
-
-# tol = 1e-6
-# @benchmark solve(ode_prob,
-#                  CVODE_BDF();
-#                  saveat=15.0,
-#                  reltol=tol,
-#                  abstol=tol
-#       )
-
-
