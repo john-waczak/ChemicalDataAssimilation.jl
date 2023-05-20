@@ -105,6 +105,7 @@ for i ∈ 3:ncol(df_rrate_coeffs_mech)
 end
 
 
+
 # --------------------------------------------------------------------------------------------------------------------------
 # Get measurement indices
 # --------------------------------------------------------------------------------------------------------------------------
@@ -443,7 +444,7 @@ CSV.write("models/$model_name/4dvar/u0_adjusted.csv", df_out)
 
 
 _prob = remake(ode_prob; u0=u0a_adjusted)
-sol = solve(
+sol2 = solve(
     _prob,
     CVODE_BDF();
     saveat=Δt_step,
@@ -460,8 +461,13 @@ sol = solve(
 
 using Measurements
 
+adjusted = false
+if adjusted
+    u_sol = Matrix(sol2)
+else
+    u_sol = Matrix(sol)
+end
 
-u_sol = Matrix(sol)
 times = tmin:Δt_step:tmax
 
 

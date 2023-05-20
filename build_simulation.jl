@@ -44,20 +44,25 @@ df_number_densities = CSV.File("models/$model_name/number_densities.csv") |> Dat
 
 
 # 2. Generate lookup table for Photolysis Rates
-generate_photolysis_rates("data/no_ap/photolysis_rates.csv",
-                          "data/w_ap/photolysis_rates.csv";
-                          model_name=model_name,
-                          Δt_step=Δt_step
-                          )
-df_photolysis = CSV.File("models/$model_name/photolysis_rates.csv") |> DataFrame
-
-
-photolysis_fudge_fac = 1e6
-for colname ∈ names(df_photolysis)
-    df_photolysis[!,colname] .= df_photolysis[!,colname] .* photolysis_fudge_fac
+use_recalculated_photo_rates = true
+if use_recalculated_photo_rates
+    df_photolysis = CSV.File("data/photolysis_rates_corrected.csv") |> DataFrame
+else
+    generate_photolysis_rates("data/no_ap/photolysis_rates.csv",
+                              "data/w_ap/photolysis_rates.csv";
+                              model_name=model_name,
+                              Δt_step=Δt_step
+                              )
+    df_photolysis = CSV.File("models/$model_name/photolysis_rates.csv") |> DataFrame
 end
 
-df_photolysis
+
+# photolysis_fudge_fac = 1e6
+# for colname ∈ names(df_photolysis)
+#     df_photolysis[!,colname] .= df_photolysis[!,colname] .* photolysis_fudge_fac
+# end
+
+# df_photolysis
 
 
 describe(df_photolysis)
