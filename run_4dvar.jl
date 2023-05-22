@@ -530,3 +530,4 @@ W_ppb = W_mr .* 1e9
     savefig("models/$model_name/4dvar/$(plot_spec_name)_ppb.pdf")
 end
 
+df_rrate_coeffs_mech[:, "k_41"]

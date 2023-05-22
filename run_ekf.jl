@@ -32,6 +32,11 @@ if !ispath("models/$model_name")
     mkpath("models/$model_name")
 end
 
+
+if !isdir("models/$model_name/EKF")
+    mkpath("models/$model_name/EKF")
+end
+
 fac_dict = read_fac_file(mechpath)
 
 
@@ -357,6 +362,7 @@ const DM::Matrix{Float64} = DM_test[1]
 end
 
 
+
 # combine output w/ uncertainty from diagonal
 uₐ_nd = uₐ .± sqrt.(P_diag)
 
@@ -374,6 +380,22 @@ ua_mr_vals = Measurements.value.(uₐ_mr)
 ua_mr_ϵ = Measurements.uncertainty.(uₐ_mr)
 
 
+# save to output file
+df_ekf = DataFrame()
+df_ekf_ϵ = DataFrame()
+
+@showprogress for i ∈ axes(ua_mr_vals, 1)
+    df_ekf[!, df_species[i, "MCM Name"]] = ua_mr_vals[i,:]
+    df_ekf_ϵ[!, df_species[i, "MCM Name"]] = ua_mr_ϵ[i,:]
+end
+
+df_ekf[!, :times] = ts
+df_ekf_ϵ[!, :times] = ts
+
+CSV.write("models/$model_name/EKF/ekf_output.csv", df_ekf)
+CSV.write("models/$model_name/EKF/ekf_ϵ_output.csv", df_ekf_ϵ)
+
+
 # combine measurements with uncertainties
 W_mr = W .± (fudge_fac .* meas_ϵ)
 for i ∈ axes(W_mr, 1)
@@ -382,62 +404,90 @@ end
 W_mr_val = Measurements.value.(W_mr)
 W_mr_ϵ = Measurements.uncertainty.(W_mr)
 
-# ------------ Plots -----------------
+# save measurements to csv files for final output
+size(W_mr_val)
+idx_meas
 
-if !isdir("models/$model_name/EKF")
-    mkpath("models/$model_name/EKF")
+df_w = DataFrame()
+df_w_ϵ = DataFrame()
+@showprogress for i ∈ axes(W_mr_val, 1)
+    df_w[!, df_species[idx_meas[i], "MCM Name"]] = W_mr_val[i,:]
+    df_w_ϵ[!, df_species[idx_meas[i], "MCM Name"]] = W_mr_ϵ[i,:]
 end
 
+CSV.write("models/$model_name/EKF/ekf_measurements.csv", df_w)
+CSV.write("models/$model_name/EKF/ekf_measurements_ϵ.csv", df_w_ϵ)
+
+
+
+# ------------ Plots -----------------
+df_species[3,:]
+
+
+
+idx_0 = findfirst(x -> x == 0.0, ts)
 
 @showprogress for i ∈ 1:nrow(df_species)
-#    i=1
-    plot_spec_name = df_species[df_species.idx_species .== i, "MCM Name"][1]
 
-    plot(
-        ts,
-        ua_mr_vals[i,:] * 1e9,
-        ribbon=ua_mr_ϵ[i,:] .* 1e9,
+
+    plot_spec_name = df_species[df_species.idx_species .== i, "MCM Name"][1]
+    p1 = plot(
+        ts[2:idx_0],
+        ua_mr_vals[i,2:idx_0] * 1e9,
+        ribbon=ua_mr_ϵ[i,2:idx_0] .* 1e9,
         xlabel="time [minutes]",
-        ylabel="concentration [ppb]",
-        label="EKF",
-        title=plot_spec_name,
-        lw=3
+        ylabel="$plot_spec_name concentration [ppb]",
+        label="No ActivePure",
+#        title=plot_spec_name,
+        lw=3,
+        link=:y
+    )
+    plot!(
+        ts[idx_0:end],
+        ua_mr_vals[i,idx_0:end] * 1e9,
+        ribbon=ua_mr_ϵ[i,idx_0:end] .* 1e9,
+        label="With ActivePure",
+        lw=3,
     )
 
-    vline!([0.0], lw=3, label="")
+    # vline!([0.0], lw=3, label="")
 
     if i ∈ idx_meas
         idx_to_use = findfirst(x->x==i, idx_meas)
-        scatter!(ts,
-                 W_mr_val[idx_to_use,:] .* 1e9,
-                 yerror=W_mr_ϵ[idx_to_use,:] .* 1e9,
+        scatter!(ts[2:end],
+                 W_mr_val[idx_to_use,2:end] .* 1e9,
+                 yerror=W_mr_ϵ[idx_to_use,2:end] .* 1e9,
                  label="Measurements",
                  )
     end
 
+
+    p2 = violin([plot_spec_name], ua_mr_vals[i,2:idx_0] .* 1e9, side=:left, label="No ActivePure", ymirror=true)
+    violin!([plot_spec_name], ua_mr_vals[i,idx_0:end] .* 1e9 , side=:right, label="With ActivePure")
+
+    mag = 1.35
+    plot(p1,p2, layout=grid(1,2,widths=[0.7,0.3]), size=(mag*600, mag*400), margins=5Plots.mm)
+
     savefig("models/$model_name/EKF/$(plot_spec_name).png")
     savefig("models/$model_name/EKF/$(plot_spec_name).pdf")
 
-    if plot_spec_name ∈ ["OH", "HO2", "O", "O1D"]
-        println(ua_mr_vals[i,:])
-        plot(
-            ts,
-            log10.(ua_mr_vals[i,:]),
-            ribbon=log10.(ua_mr_ϵ[i,:]),
-            xlabel="time [minutes]",
-            ylabel="log10 mixing ratio",
-            label="EKF",
-            title=plot_spec_name,
-            lw=3
-        )
+    # if plot_spec_name ∈ ["OH", "HO2", "O", "O1D"]
+    #     plot(
+    #         ts[2:end],
+    #         log10.(ua_mr_vals[i,2:end]),
+    #         ribbon=log10.(ua_mr_ϵ[i,2:end]),
+    #         xlabel="time [minutes]",
+    #         ylabel="log10 mixing ratio",
+    #         label="EKF",
+    #         title=plot_spec_name,
+    #         lw=3
+    #     )
 
-        vline!([0.0], lw=3, label="")
+    #     vline!([0.0], lw=3, label="")
 
-        savefig("models/$model_name/EKF/$(plot_spec_name)_log10.png")
-        savefig("models/$model_name/EKF/$(plot_spec_name)_log10.pdf")
-    end
-
-
+    #     savefig("models/$model_name/EKF/$(plot_spec_name)_log10.png")
+    #     savefig("models/$model_name/EKF/$(plot_spec_name)_log10.pdf")
+    # end
 end
 
 
