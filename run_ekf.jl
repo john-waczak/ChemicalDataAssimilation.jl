@@ -650,3 +650,6 @@ savefig("models/$model_name/network_vis.pdf")
 # we can then scale/color the reaction nodes by mean lifetime (or do a video of the lifetime)
 # but to do so we need to fix the positions of each node so that they don't change between frames
 # further we can color each of the species nodes by it's category i.e. source, scavenger, reactive species, reservoir....
+
+# further, we can use MetaGraphs.jl to include meta-information such as lifetimes, reaction rate coefficients, nice
+# latexified formula names, etc...
