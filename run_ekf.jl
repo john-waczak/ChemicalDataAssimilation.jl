@@ -595,3 +595,58 @@ idx_0 = findfirst(x -> x == 0.0, ts)
     savefig("models/$model_name/EKF/$(plot_spec_name)_lifetime.pdf")
 end
 
+
+
+
+# --------------------------------------------------------------------------------------------------------------------------
+# Reaction Network Visualization
+# --------------------------------------------------------------------------------------------------------------------------
+
+
+using SparseArrays
+using GraphRecipes
+
+N_raw = CSV.File("models/$model_name/N.csv") |> DataFrame
+N = sparse(N_raw.I, N_raw.J, N_raw.V)
+
+# now remove the old file from memory
+N_raw = nothing
+GC.gc()
+
+# to construct graph, we loop over each reaction and add edges between products and reactants.
+
+# our graph is really a multigraph, i.e. a graph where we can have n-many edges between each pair of nodes. 
+
+graphplot([[1,1,2,2],[1,1,1],[1]], names="node_".*string.(1:3), nodeshape=:circle, self_edge_size=0.25)
+
+
+rxn = rxns[1]
+fieldnames(typeof(rxn))
+
+
+edges_mat = [[] for _ ∈ 1:nrow(df_species)]
+
+@showprogress for rxn ∈ rxns
+    for i ∈ rxn.idxs_in
+        for j ∈ rxn.idxs_out
+            push!(edges_mat[i], j)
+        end
+    end
+end
+
+graphplot(edges_mat,
+          names=df_species[!, "MCM Name"],
+          fontsize=10,
+          nodeshape=:circle,
+          nodesize=0.125,
+          size=(1000,1000)
+          )
+
+savefig("models/$model_name/network_vis.png")
+savefig("models/$model_name/network_vis.pdf")
+
+# ideas, instead have a marker for species and a separate marker for reactions. Then we can easily
+# visualize the inputs and outputs of each reaction.
+# we can then scale/color the reaction nodes by mean lifetime (or do a video of the lifetime)
+# but to do so we need to fix the positions of each node so that they don't change between frames
+# further we can color each of the species nodes by it's category i.e. source, scavenger, reactive species, reservoir....
