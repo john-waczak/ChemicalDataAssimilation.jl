@@ -498,3 +498,100 @@ println(median(ua_mr_vals[8,:]))
 println(maximum(ua_mr_vals[8,:]))
 println(minimum(ua_mr_vals[8,:]))
 
+
+# --------------------------------------------------------------------------------------------------------------------------
+# Compute Lifetime
+# --------------------------------------------------------------------------------------------------------------------------
+
+# we write the lifetime for species i as
+
+# τᵢ = ∑ⱼτᵢⱼ where j are all reactions for which i is a reactant
+
+# the form for each τᵢⱼ depends on the specific reaction type
+
+# Photodissociation reaction:
+# X + hν ⟶ products
+# Ẋ = -jX  [molecules/cm³/s]
+# τ = 1\j  [s]
+
+# Collision reaction:
+# X + ∑ⱼYⱼ ⟶ products
+# Ẋ = -kX⋅ΠⱼYⱼ   [molecules/cm³/s]
+# τ = 1\(kΠⱼYⱼ)
+
+# Collision reaction w/ RO2 (i.e. all termolecular reactions) will look the same as above since M is included already inside of our computed k.
+
+derivatives
+derivatives_ro2
+
+# now we need to combine
+
+ua_nd =  Measurements.value.(uₐ_nd)
+size(ua_nd)
+
+k_vals = Matrix(df_rrate_coeffs_mech[:, 3:end])'
+@assert size(k_vals, 1) == length(rxns)
+
+τs = zeros(size(ua_nd))  # preallocate matrix to hold values
+ℓ = ones(size(ua_nd,2))  # loss rate
+
+@showprogress for derivative ∈ derivatives
+    if derivative.prefac < 0.0 # i.e. if it's negative so that we have a reactant not product
+        ℓ .= k_vals[derivative.idx_k, :]
+        for i ∈ derivative.idxs_in
+            ℓ .= ℓ .+ ua_nd[i, :]
+        end
+
+        # compute lifetime from loss rate
+        τs[derivative.idx_du, :] .= ua_nd[derivative.idx_du] ./ ℓ
+    end
+end
+
+@showprogress for derivative ∈ derivatives_ro2
+    if derivative.prefac < 0.0 # i.e. if it's negative so that we have a reactant not product
+        ℓ .= k_vals[derivative.idx_k, :]
+        for i ∈ derivative.idxs_in
+            ℓ .= ℓ .+ ua_nd[i, :]
+        end
+
+        # compute lifetime from loss rate
+        τs[derivative.idx_du, :] .= ua_nd[derivative.idx_du] ./ ℓ
+    end
+end
+
+
+
+idx_0 = findfirst(x -> x == 0.0, ts)
+
+@showprogress for i ∈ 1:nrow(df_species)
+
+
+    plot_spec_name = df_species[df_species.idx_species .== i, "MCM Name"][1]
+
+    p1 = plot(
+        ts[2:idx_0],
+        τs[i,2:idx_0],
+        xlabel="time [minutes]",
+        ylabel="$plot_spec_name lifetime [seconds]",
+        lw=3,
+        label="No ActivePure",
+    )
+
+
+    plot!(
+        ts[idx_0:end],
+        τs[i,idx_0:end],
+        label="With ActivePure",
+        lw=3,
+    )
+
+    p2 = violin([plot_spec_name], τs[i,2:idx_0] , side=:left, label="No ActivePure", ymirror=true)
+    violin!([plot_spec_name], τs[i,idx_0:end] , side=:right, label="With ActivePure")
+
+    mag = 1.35
+    plot(p1,p2, layout=grid(1,2,widths=[0.7,0.3]), size=(mag*600, mag*400), margins=5Plots.mm)
+
+    savefig("models/$model_name/EKF/$(plot_spec_name)_lifetime.png")
+    savefig("models/$model_name/EKF/$(plot_spec_name)_lifetime.pdf")
+end
+
