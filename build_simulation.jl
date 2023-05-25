@@ -38,6 +38,11 @@ generate_densities("data/no_ap/number_densities.csv",
                    "data/w_ap/number_densities.csv";
                    model_name=model_name
                    )
+generate_densities("data/no_ap/number_densities_ϵ.csv",
+                   "data/w_ap/number_densities_ϵ.csv";
+                   model_name=model_name
+                   )
+
 
 df_params = CSV.File("models/$model_name/state_parameters.csv") |> DataFrame
 df_number_densities = CSV.File("models/$model_name/number_densities.csv") |> DataFrame
