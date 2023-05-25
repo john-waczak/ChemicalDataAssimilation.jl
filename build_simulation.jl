@@ -4,11 +4,11 @@ using Statistics
 using DelimitedFiles, CSV, DataFrames
 using ProgressMeter
 
-mechpath = "mechanism-files/extracted/alkanes/methane.fac"
-model_name = "methane"
+# mechpath = "mechanism-files/extracted/alkanes/methane.fac"
+# model_name = "methane"
 
-# mechpath = "mechanism-files/extracted/full/mcm_subset.fac"
-# model_name = "mcm_full"
+mechpath = "mechanism-files/extracted/full/mcm_subset.fac"
+model_name = "mcm_full"
 
 
 @assert ispath(mechpath) == true
@@ -158,4 +158,5 @@ rxns = generate_reaction_list(fac_dict, df_species)
 spec_list, N = generate_stoich_mat(
     fac_dict,
     model_name=model_name
-)
+);
+
