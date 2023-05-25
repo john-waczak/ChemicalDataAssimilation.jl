@@ -8,11 +8,11 @@ using DataInterpolations
 using QuadGK
 using LaTeXStrings
 
-mechpath = "mechanism-files/extracted/alkanes/methane.fac"
-model_name = "methane"
+# mechpath = "mechanism-files/extracted/alkanes/methane.fac"
+# model_name = "methane"
 
-# mechpath = "mechanism-files/extracted/full/mcm_subset.fac"
-# model_name = "mcm_full"
+mechpath = "mechanism-files/extracted/full/mcm_subset.fac"
+model_name = "mcm_full"
 
 @assert ispath(mechpath) == true
 
@@ -122,13 +122,56 @@ df_Φs = CSV.File(download("https://raw.githubusercontent.com/john-waczak/Photol
 # go through each of the photolysis rates
 # -----------------------------------------------------------------
 
+
+function get_J(idx_reaction)
+    integrand = ConstantInterpolation(Is_photon .* df_σs[:, "σ_$idx_reaction"] .* df_Φs[:, "Φ_$idx_reaction"], λs)
+    J, J_error = quadgk(integrand, λmin, λmax)
+end
+
+
+plot(
+    λs,
+    log10.(Is_photon),
+    ylabel="log10 Irradiance or σ",
+    lw=3,
+    color=:royalblue,
+    label="I(λ,T)",
+    legend=:inside,
+)
+
+plot!(
+    λs,
+    log10.(df_σs[:, :σ_1]),
+    lw=3,
+    color=:orange,
+    #ylabel="log10 σ",
+    label="σ(λ,T)",
+)
+
+
+plot!(
+    twinx(),
+    λs,
+    df_Φs[:,:Φ_1],
+    lw=3,
+    color=:gray,
+    ylabel="Quantum Yield",
+    label="Φ(λ,T)",
+    legend=:right
+)
+
+title!("J = $(get_J(1)[1])")
+savefig("photolysis_plot.pdf")
+
+
+
 df_photolysis = DataFrame()
 
 @showprogress for i ∈ 1:56
     try
         df_photolysis[:, "J_$i"] = get_J(i)[1] .* ones(N)
     catch e
-        continue
+        println(e)
     end
 end
 
