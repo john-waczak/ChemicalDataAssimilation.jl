@@ -529,37 +529,104 @@ derivatives_ro2
 ua_nd =  Measurements.value.(uₐ_nd)
 size(ua_nd)
 
-k_vals = Matrix(df_rrate_coeffs_mech[:, 3:end])'
-@assert size(k_vals, 1) == length(rxns)
+τs = copy(ua_nd)  # preallocate matrix to hold values
+ℓ_mat = zeros(size(ua_nd))  # loss rate
+ℓ = 1.0
 
-τs = zeros(size(ua_nd))  # preallocate matrix to hold values
-ℓ = ones(size(ua_nd,2))  # loss rate
-
-@showprogress for derivative ∈ derivatives
+@showprogress for d ∈ 1:length(derivatives)
+    derivative = derivatives[d]
     if derivative.prefac < 0.0 # i.e. if it's negative so that we have a reactant not product
-        ℓ .= k_vals[derivative.idx_k, :]
-        for i ∈ derivative.idxs_in
-            ℓ .= ℓ .+ ua_nd[i, :]
-        end
+        for idx_t ∈ axes(K_matrix,1)
+            ℓ = K_matrix[idx_t,derivative.idx_k]
+            for i ∈ derivative.idxs_in
+                ℓ  *= ua_nd[i, idx_t]
+            end
 
-        # compute lifetime from loss rate
-        τs[derivative.idx_du, :] .= ua_nd[derivative.idx_du] ./ ℓ
+            ℓ_mat[derivative.idx_du, idx_t] += ℓ
+        end
     end
 end
 
-@showprogress for derivative ∈ derivatives_ro2
+@showprogress for d ∈ 1:length(derivatives_ro2)
+    derivative = derivatives_ro2[d]
     if derivative.prefac < 0.0 # i.e. if it's negative so that we have a reactant not product
-        ℓ .= k_vals[derivative.idx_k, :]
-        for i ∈ derivative.idxs_in
-            ℓ .= ℓ .+ ua_nd[i, :]
-        end
+        for idx_t ∈ axes(K_matrix,1)
+            ℓ = K_matrix[idx_t,derivative.idx_k]
+            for i ∈ derivative.idxs_in
+                ℓ  *= ua_nd[i, idx_t]
+            end
 
-        # compute lifetime from loss rate
-        τs[derivative.idx_du, :] .= ua_nd[derivative.idx_du] ./ ℓ
+            ℓ_mat[derivative.idx_du, idx_t] += ℓ
+        end
     end
 end
 
 
+for j ∈ axes(τs, 2), i ∈ axes(τs,1)
+    if isinf(τs[i,j]/ℓ_mat[i,j] ) || isnan(τs[i,j]/ℓ_mat[i,j] )
+        println("idx:\t", i, "\tu:\t", τs[i,j], "\tℓ:\t",ℓ_mat[i,j], "\tτ:\t", τs[i,j]/ℓ_mat[i,j] )
+    end
+
+    τs[i,j] = τs[i,j] / ℓ_mat[i,j]
+end
+
+
+
+df_species[,:]
+
+τs .= τs ./ ℓ_mat
+
+
+# @showprogress for d ∈ 1:length(derivatives)
+#     derivative = derivatives[d]
+#     if derivative.prefac < 0.0 # i.e. if it's negative so that we have a reactant not product
+#         for idx_t ∈ axes(K_matrix,1)
+#             ℓ = K_matrix[idx_t,derivative.idx_k]
+#             for i ∈ derivative.idxs_in
+#                 # if i != derivative.idx_du
+#                 #     ℓ  *= ua_nd[i, idx_t]
+#                 # end
+
+#                 ℓ  *= ua_nd[i, idx_t]
+#             end
+
+#             if ℓ > 0.0
+#                 τs[derivative.idx_du, idx_t] += (ua_nd[derivative.idx_du, idx_t] / ℓ)
+#             end
+#         end
+#     end
+# end
+
+# τs[8,:]
+# for derivative ∈ derivatives
+#     if derivative.idx_du == 8 && derivative.prefac == -1
+#         println(derivative)
+#         println("\t", mean(1.0 ./ (K_matrix[:, derivative.idx_k] .*  ua_nd[derivative.idxs_in[2],:])))
+#     end
+# end
+
+
+
+# @showprogress for d ∈ 1:length(derivatives_ro2)
+#     derivative = derivatives_ro2[d]
+#     if derivative.prefac < 0.0 # i.e. if it's negative so that we have a reactant not product
+#         for idx_t ∈ axes(K_matrix,1)
+#             ℓ = K_matrix[idx_t,derivative.idx_k]
+#             for i ∈ derivative.idxs_in
+#                 if i != derivative.idx_du
+#                     ℓ  *= ua_nd[i, idx_t]
+#                 end
+#             end
+
+#             if ℓ > 0.0
+#                 τs[derivative.idx_du, idx_t] += (1.0 / ℓ)
+#             end
+#         end
+#     end
+# end
+
+
+τs
 
 idx_0 = findfirst(x -> x == 0.0, ts)
 
@@ -597,59 +664,98 @@ end
 
 
 
+τs
+# generate lifetime dataframes for output
+df_τs = DataFrame()
+@showprogress for i ∈ axes(τs, 1)
+    df_τs[!, df_species[i, "MCM Name"]] = τs[i,:]
+end
+
+df_τs.t = df_params.t
+
+describe(df_τs)
+
+CSV.write("models/$model_name/EKF/lifetimes.csv", df_τs)
+
+df_τs_means = DataFrame()
+@showprogress for i ∈ axes(τs, 1)
+    df_τs_means[!, df_species[i, "MCM Name"]] = [mean(τs[i,:])]
+end
+
+df_τs_means
+
+τs_means = Matrix(df_τs_means)
+idx_sort = sortperm(τs_means, dims=2, rev=true)
+
+for idx ∈ idx_sort
+    println(names(df_τs_means)[idx], ":\t", df_τs_means[1, idx])
+end
+
+
 
 # --------------------------------------------------------------------------------------------------------------------------
 # Reaction Network Visualization
 # --------------------------------------------------------------------------------------------------------------------------
 
 
-using SparseArrays
-using GraphRecipes
+# using SparseArrays
+# using GraphRecipes
 
-N_raw = CSV.File("models/$model_name/N.csv") |> DataFrame
-N = sparse(N_raw.I, N_raw.J, N_raw.V)
+# N_raw = CSV.File("models/$model_name/N.csv") |> DataFrame
+# N = sparse(N_raw.I, N_raw.J, N_raw.V)
 
-# now remove the old file from memory
-N_raw = nothing
-GC.gc()
+# # now remove the old file from memory
+# N_raw = nothing
+# GC.gc()
+
+# N[5,:]
+# df_species[5,:]
 
 # to construct graph, we loop over each reaction and add edges between products and reactants.
 
-# our graph is really a multigraph, i.e. a graph where we can have n-many edges between each pair of nodes. 
+# # our graph is really a multigraph, i.e. a graph where we can have n-many edges between each pair of nodes. 
 
-graphplot([[1,1,2,2],[1,1,1],[1]], names="node_".*string.(1:3), nodeshape=:circle, self_edge_size=0.25)
-
-
-rxn = rxns[1]
-fieldnames(typeof(rxn))
+# graphplot([[1,1,2,2],[1,1,1],[1]], names="node_".*string.(1:3), nodeshape=:circle, self_edge_size=0.25)
 
 
-edges_mat = [[] for _ ∈ 1:nrow(df_species)]
+# rxn = rxns[1]
+# fieldnames(typeof(rxn))
 
-@showprogress for rxn ∈ rxns
-    for i ∈ rxn.idxs_in
-        for j ∈ rxn.idxs_out
-            push!(edges_mat[i], j)
-        end
-    end
-end
 
-graphplot(edges_mat,
-          names=df_species[!, "MCM Name"],
-          fontsize=10,
-          nodeshape=:circle,
-          nodesize=0.125,
-          size=(1000,1000)
-          )
+# edges_mat = [[] for _ ∈ 1:nrow(df_species)]
 
-savefig("models/$model_name/network_vis.png")
-savefig("models/$model_name/network_vis.pdf")
+# @showprogress for rxn ∈ rxns
+#     for i ∈ rxn.idxs_in
+#         for j ∈ rxn.idxs_out
+#             push!(edges_mat[i], j)
+#         end
+#     end
+# end
 
-# ideas, instead have a marker for species and a separate marker for reactions. Then we can easily
-# visualize the inputs and outputs of each reaction.
-# we can then scale/color the reaction nodes by mean lifetime (or do a video of the lifetime)
-# but to do so we need to fix the positions of each node so that they don't change between frames
-# further we can color each of the species nodes by it's category i.e. source, scavenger, reactive species, reservoir....
+# graphplot(edges_mat,
+#           names=df_species[!, "MCM Name"],
+#           method=:chorddiagram,
+# #          fontsize=10,
+# #          nodeshape=:circle,
+# #          nodesize=0.125,
+#           size=(1000,1000)
+#           )
 
-# further, we can use MetaGraphs.jl to include meta-information such as lifetimes, reaction rate coefficients, nice
-# latexified formula names, etc...
+# savefig("models/$model_name/network_vis.png")
+# savefig("models/$model_name/network_vis.pdf")
+
+# # ideas, instead have a marker for species and a separate marker for reactions. Then we can easily
+# # visualize the inputs and outputs of each reaction.
+# # we can then scale/color the reaction nodes by mean lifetime (or do a video of the lifetime)
+# # but to do so we need to fix the positions of each node so that they don't change between frames
+# # further we can color each of the species nodes by it's category i.e. source, scavenger, reactive species, reservoir....
+
+# # further, we can use MetaGraphs.jl to include meta-information such as lifetimes, reaction rate coefficients, nice
+# # latexified formula names, etc...
+
+
+
+# # do a graph for each individual species including all those reactions which it is involved in.
+
+
+
