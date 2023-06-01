@@ -564,102 +564,50 @@ end
 
 for j ∈ axes(τs, 2), i ∈ axes(τs,1)
     if isinf(τs[i,j]/ℓ_mat[i,j] ) || isnan(τs[i,j]/ℓ_mat[i,j] )
-        println("idx:\t", i, "\tu:\t", τs[i,j], "\tℓ:\t",ℓ_mat[i,j], "\tτ:\t", τs[i,j]/ℓ_mat[i,j] )
+        println("idx: ", (i,j), "\tu:\t", τs[i,j], "\tℓ:\t",ℓ_mat[i,j], "\tτ:\t", τs[i,j]/ℓ_mat[i,j] )
     end
 
     τs[i,j] = τs[i,j] / ℓ_mat[i,j]
 end
-
-
-
-df_species[,:]
-
-τs .= τs ./ ℓ_mat
-
-
-# @showprogress for d ∈ 1:length(derivatives)
-#     derivative = derivatives[d]
-#     if derivative.prefac < 0.0 # i.e. if it's negative so that we have a reactant not product
-#         for idx_t ∈ axes(K_matrix,1)
-#             ℓ = K_matrix[idx_t,derivative.idx_k]
-#             for i ∈ derivative.idxs_in
-#                 # if i != derivative.idx_du
-#                 #     ℓ  *= ua_nd[i, idx_t]
-#                 # end
-
-#                 ℓ  *= ua_nd[i, idx_t]
-#             end
-
-#             if ℓ > 0.0
-#                 τs[derivative.idx_du, idx_t] += (ua_nd[derivative.idx_du, idx_t] / ℓ)
-#             end
-#         end
-#     end
-# end
-
-# τs[8,:]
-# for derivative ∈ derivatives
-#     if derivative.idx_du == 8 && derivative.prefac == -1
-#         println(derivative)
-#         println("\t", mean(1.0 ./ (K_matrix[:, derivative.idx_k] .*  ua_nd[derivative.idxs_in[2],:])))
-#     end
-# end
-
-
-
-# @showprogress for d ∈ 1:length(derivatives_ro2)
-#     derivative = derivatives_ro2[d]
-#     if derivative.prefac < 0.0 # i.e. if it's negative so that we have a reactant not product
-#         for idx_t ∈ axes(K_matrix,1)
-#             ℓ = K_matrix[idx_t,derivative.idx_k]
-#             for i ∈ derivative.idxs_in
-#                 if i != derivative.idx_du
-#                     ℓ  *= ua_nd[i, idx_t]
-#                 end
-#             end
-
-#             if ℓ > 0.0
-#                 τs[derivative.idx_du, idx_t] += (1.0 / ℓ)
-#             end
-#         end
-#     end
-# end
-
 
 τs
 
 idx_0 = findfirst(x -> x == 0.0, ts)
 
 @showprogress for i ∈ 1:nrow(df_species)
-
-
     plot_spec_name = df_species[df_species.idx_species .== i, "MCM Name"][1]
 
-    p1 = plot(
-        ts[2:idx_0],
-        τs[i,2:idx_0],
-        xlabel="time [minutes]",
-        ylabel="$plot_spec_name lifetime [seconds]",
-        lw=3,
-        label="No ActivePure",
-    )
+    try
+
+        p1 = plot(
+            ts[2:idx_0],
+            τs[i,2:idx_0],
+            xlabel="time [minutes]",
+            ylabel="$plot_spec_name lifetime [seconds]",
+            lw=3,
+            label="No ActivePure",
+        )
 
 
-    plot!(
-        ts[idx_0:end],
-        τs[i,idx_0:end],
-        label="With ActivePure",
-        lw=3,
-    )
+        plot!(
+            ts[idx_0:end],
+            τs[i,idx_0:end],
+            label="With ActivePure",
+            lw=3,
+        )
 
-    p2 = violin([plot_spec_name], τs[i,2:idx_0] , side=:left, label="No ActivePure", ymirror=true)
-    violin!([plot_spec_name], τs[i,idx_0:end] , side=:right, label="With ActivePure")
+        p2 = violin([plot_spec_name], [τ for τ ∈ τs[i,2:idx_0] if !isnan(τ) && !isinf(τ)] , side=:left, label="No ActivePure", ymirror=true)
+        violin!([plot_spec_name], [τ for τ ∈ τs[i,idx_0:end] if !isnan(τ) && !isinf(τ)] , side=:right, label="With ActivePure")
 
-    mag = 1.35
-    plot(p1,p2, layout=grid(1,2,widths=[0.7,0.3]), size=(mag*600, mag*400), margins=5Plots.mm)
+        mag = 1.35
+        plot(p1,p2, layout=grid(1,2,widths=[0.7,0.3]), size=(mag*600, mag*400), margins=5Plots.mm)
 
-    savefig("models/$model_name/EKF/$(plot_spec_name)_lifetime.png")
-    savefig("models/$model_name/EKF/$(plot_spec_name)_lifetime.pdf")
+        savefig("models/$model_name/EKF/$(plot_spec_name)_lifetime.png")
+        savefig("models/$model_name/EKF/$(plot_spec_name)_lifetime.pdf")
+
+    catch e
+        println(plot_spec_name*" failed to plot!")
+    end
 end
 
 
@@ -672,6 +620,8 @@ df_τs = DataFrame()
 end
 
 df_τs.t = df_params.t
+
+df_τs.N2O5
 
 describe(df_τs)
 
@@ -687,9 +637,24 @@ df_τs_means
 τs_means = Matrix(df_τs_means)
 idx_sort = sortperm(τs_means, dims=2, rev=true)
 
+spec_name = []
+mean_lifetime = []
+
 for idx ∈ idx_sort
-    println(names(df_τs_means)[idx], ":\t", df_τs_means[1, idx])
+    push!(spec_name, names(df_τs_means)[idx])
+    push!(mean_lifetime,df_τs_means[1, idx] )
 end
+
+df_τs_means_sorted = DataFrame(:species => spec_name, :τ_seconds => mean_lifetime)
+
+df_τs_means_sorted.τ_minutes = (df_τs_means_sorted.τ_seconds ./ 60)
+df_τs_means_sorted.τ_hours = (df_τs_means_sorted.τ_minutes ./ 60)
+df_τs_means_sorted.τ_days = (df_τs_means_sorted.τ_hours ./ 24)
+df_τs_means_sorted.τ_weeks = (df_τs_means_sorted.τ_days ./7) 
+df_τs_means_sorted.τ_years = (df_τs_means_sorted.τ_days ./365) 
+
+
+CSV.write("mean_lifetimes.csv", df_τs_means_sorted[7:end,:])
 
 
 
