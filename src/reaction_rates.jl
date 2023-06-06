@@ -108,7 +108,6 @@ function generate_rrates_funcs(fac_dict::Dict; model_name::String="mcm")
         for crc ∈ crcs
             #res, lhs = rc_to_expression(crc, rate_names; params)
             res, lhs = rc_to_expression(crc, rate_names)
-            println(lhs)
             println(f, rstrip(res))
         end
     end

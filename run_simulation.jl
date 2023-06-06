@@ -8,11 +8,11 @@ using BenchmarkTools
 using DifferentialEquations
 using Sundials
 
-mechpath = "mechanism-files/extracted/alkanes/methane.fac"
-model_name = "methane"
+# mechpath = "mechanism-files/extracted/alkanes/methane.fac"
+# model_name = "methane"
 
-# mechpath = "mechanism-files/extracted/full/mcm_subset.fac"
-# model_name = "mcm_full"
+mechpath = "mechanism-files/extracted/full/mcm_subset.fac"
+model_name = "mcm_full"
 
 @assert ispath(mechpath) == true
 
@@ -164,12 +164,7 @@ rhs!(du, u₀, nothing, -180.0)
 jac_prototype = generate_jac_prototype(jacobian_terms, jacobian_terms_ro2)
 
 
-@benchmark jac!(Jac, u₀, nothing, 1.0)
-
-# set up jacobian prototype as a non sparse matrix
-#Jac = zeros(size(u₀,1), size(u₀,1))
-#@benchmark jac!(Jac, u₀, nothing, 1.0)
-
+@benchmark jac!(jac_prototype, u₀, nothing, 1.0)
 
 # set up integration timerange:
 tmin = minimum(ts)
@@ -177,73 +172,73 @@ tmax = maximum(ts)
 #tmax = 0.0
 tspan = (tmin, tmax)
 
-# add a bump to each element so we start off nonzero
-u₀ .+= 1e-10
+# # add a bump to each element so we start off nonzero
+# u₀ .+= 1e-10
 
-# define ode problem to solve
-ode_prob = @time ODEProblem{true, SciMLBase.FullSpecialize}(rhs!, u₀, tspan)
+# # define ode problem to solve
+# ode_prob = @time ODEProblem{true, SciMLBase.FullSpecialize}(rhs!, u₀, tspan)
 
-#fun = ODEFunction(rhs!; jac=jac!, jac_prototype=Jac)
-fun = ODEFunction(rhs!; jac=jac!, jac_prototype=jac_prototype)
-ode_prob2 = @time ODEProblem{true, SciMLBase.FullSpecialize}(fun, u₀, tspan)
+# #fun = ODEFunction(rhs!; jac=jac!, jac_prototype=Jac)
+# fun = ODEFunction(rhs!; jac=jac!, jac_prototype=jac_prototype)
+# ode_prob2 = @time ODEProblem{true, SciMLBase.FullSpecialize}(fun, u₀, tspan)
 
-# define tolerance
-tol = 1e-3
-@benchmark solve(ode_prob,
-                 CVODE_BDF();
-                 saveat=15.0,
-                 reltol=tol,
-                 abstol=tol,
-                 )
+# # define tolerance
+# tol = 1e-3
+# @benchmark solve(ode_prob,
+#                  CVODE_BDF();
+#                  saveat=15.0,
+#                  reltol=tol,
+#                  abstol=tol,
+#                  )
 
-@benchmark solve(ode_prob2,
-                 CVODE_BDF();
-                 saveat=15.0,
-                 reltol=tol,
-                 abstol=tol,
-                 )
-
-
-sol = solve(
-    ode_prob2,
-    CVODE_BDF();
-    saveat=15.0,
-    reltol=tol,
-    abstol=tol,
-);
+# @benchmark solve(ode_prob2,
+#                  CVODE_BDF();
+#                  saveat=15.0,
+#                  reltol=tol,
+#                  abstol=tol,
+#                  )
 
 
-# visualize the solution
+# sol = solve(
+#     ode_prob2,
+#     CVODE_BDF();
+#     saveat=15.0,
+#     reltol=tol,
+#     abstol=tol,
+# );
 
 
-size(sol)
-
-df_species
-speciesiwant = df_species[1:9, "MCM Name"]
-#speciesiwant = ["CO", "O3", "NO2", "APINENE", "H2", "CH4"]
-# speciesiwant = ["H2O2"]
-#speciesiwant = ["HO2"]
+# # visualize the solution
 
 
-size(sol)
+# size(sol)
+
+# df_species
+# speciesiwant = df_species[1:9, "MCM Name"]
+# #speciesiwant = ["CO", "O3", "NO2", "APINENE", "H2", "CH4"]
+# # speciesiwant = ["H2O2"]
+# #speciesiwant = ["HO2"]
 
 
-plotting_species_df = df_species[[name ∈ speciesiwant for name ∈ df_species[!, "MCM Name"]], :]
+# size(sol)
 
-names(plotting_species_df)
 
-p = plot()
-i = 1
-for row ∈ eachrow(plotting_species_df)
-    try
-        # plot!(p, sol.t ./ (60*24), sol[row.idx_species, :] .* (nₘ/m_init), label=row.formula, xlabel="t [days]", ylabel="concentration [molecules/cc]", legend=:outertopright)
-        plot!(p, sol.t ./ (60), sol[row.idx_species, :] ./ df_params.M, label=row.formula, xlabel="t [days]", ylabel="concentration [mixing ratio]", legend=:outertopright)
-    catch e
-        println(e)
-        println(row)
-    end
-end
+# plotting_species_df = df_species[[name ∈ speciesiwant for name ∈ df_species[!, "MCM Name"]], :]
 
-display(p)
+# names(plotting_species_df)
+
+# p = plot()
+# i = 1
+# for row ∈ eachrow(plotting_species_df)
+#     try
+#         # plot!(p, sol.t ./ (60*24), sol[row.idx_species, :] .* (nₘ/m_init), label=row.formula, xlabel="t [days]", ylabel="concentration [molecules/cc]", legend=:outertopright)
+#         plot!(p, sol.t ./ (60), sol[row.idx_species, :] ./ df_params.M, label=row.formula, xlabel="t [days]", ylabel="concentration [mixing ratio]", legend=:outertopright)
+#     catch e
+#         println(e)
+#         println(row)
+#     end
+# end
+
+# display(p)
 
 
