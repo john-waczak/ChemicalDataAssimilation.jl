@@ -46,19 +46,14 @@ function parse_commandline()
             action = :store_true
             # arg_type = Bool
             # default = false
-        "--use_background_cov"
-            help = "Whether or not to use background covariance matrix in loss"
-            action = :store_true
-            # arg_type = Bool
-            # default = false
         "--fudge_fac", "-f"
             help = "A fudge factor for manipulating scale of measurement uncertainties"
             arg_type = Float64
-            default = 0.5
+            default = 0.5  # 1.0
         "--epsilon", "-e"
             help = "Estimated background uncertainty for diagonal of B matrix, i.e. uncertainty in initial condition"
             arg_type = Float64
-            default = 0.5
+            default = 1.0  # 1.0
     end
 
 
@@ -114,7 +109,7 @@ df_number_densities = CSV.File("models/$model_name/number_densities.csv") |> Dat
 df_number_densities_ϵ = CSV.File("models/$model_name/number_densities_ϵ.csv") |> DataFrame;
 
 # --------------------------------------------------------------------------------------------------------------------------
-# Generate Initial Conditions
+# 2. Generate Initial Conditions
 # --------------------------------------------------------------------------------------------------------------------------
 
 df_u₀ = CSV.File("models/$model_name/4dvar/u0.csv") |> DataFrame
@@ -123,7 +118,7 @@ u₀ = df_u₀.u0
 
 
 # --------------------------------------------------------------------------------------------------------------------------
-# Get RO₂ indices and initial value
+# 3. Get RO₂ indices and initial value
 # --------------------------------------------------------------------------------------------------------------------------
 include("./models/$model_name/ro2.jl")
 idx_ro2  # this is the array w/ ro2 indices
@@ -131,18 +126,10 @@ ro2_sum = sum(u₀[idx_ro2])
 
 
 # --------------------------------------------------------------------------------------------------------------------------
-# Get reaction rate coefficients
+# 4. Get reaction rate coefficients
 # --------------------------------------------------------------------------------------------------------------------------
 
 df_rrate_coeffs_mech = CSV.File("./models/$model_name/rrate_coeffs_mech.csv") |> DataFrame;
-
-# df_rrate_coeffs_mech
-# for i ∈ 1:length(rxns)
-#     println(i, "\t", rxns[i])
-# end
-# df_rrate_coeffs_mech[:, :k_39]
-# df_photolysis = CSV.File("models/$model_name/photolysis_rates.csv") |> DataFrame
-
 
 # make sure every entry is a Float64
 for i ∈ 3:ncol(df_rrate_coeffs_mech)
@@ -155,7 +142,7 @@ end
 
 
 # --------------------------------------------------------------------------------------------------------------------------
-# Get measurement indices
+# 5. Get measurement indices
 # --------------------------------------------------------------------------------------------------------------------------
 
 const idx_meas::Vector{Int} = Int[]
@@ -173,14 +160,12 @@ for spec_name ∈ names(df_nd_to_use)
     push!(idx_meas, df_species[df_species[!, "MCM Name"] .== spec_name, :idx_species][1])
 end
 
-idx_meas
-
 
 # --------------------------------------------------------------------------------------------------------------------------
-# Setup all other constants
+# 6. Setup all other constants
 # --------------------------------------------------------------------------------------------------------------------------
 
-const Δt_step::Float64 = 15.0  # time step in minutes
+const Δt_step::Float64 = parsed_args[:time_step]  # time step in minutes
 const rxns::Array{ChemicalDataAssimilation.Reaction} = ChemicalDataAssimilation.Reaction[]
 const derivatives::Vector{ChemicalDataAssimilation.DerivativeTerm} = ChemicalDataAssimilation.DerivativeTerm[]
 const derivatives_ro2::Vector{ChemicalDataAssimilation.DerivativeTermRO2} = ChemicalDataAssimilation.DerivativeTermRO2[]
@@ -190,7 +175,7 @@ const RO2ᵢ::Float64 =ro2_sum > 0.0 ? ro2_sum : 1.0  # make sure we have at lea
 const K_matrix::Matrix{Float64} = Matrix{Float64}(df_rrate_coeffs_mech[:, 3:end])
 const ts::Vector{Float64} = df_rrate_coeffs_mech.t
 #const fudge_fac::Float64 = 0.5  # for measurement uncertainty
-const fudge_fac::Float64 = 1.0  # for measurement uncertainty
+const fudge_fac::Float64 = parsed_args[:fudge_fac]  # for measurement uncertainty
 const meas_ϵ::Matrix{Float64} = Matrix(df_nd_to_use_ϵ)'
 const W::Matrix{Float64} = Matrix(df_nd_to_use)'
 const P::Matrix{Float64} = zeros(nrow(df_species), nrow(df_species))
@@ -204,14 +189,14 @@ const tmax::Float64 = maximum(ts)
 const tol::Float64 = 1e-3
 const tspan = (tmin, tmax)
 
-const ϵ::Float64 = 1.0
+const ϵ::Float64 = parsed_args[:epsilon]
 const ϵ_min::Float64 = 1e-12
 
 
-const try_solve::Bool = true
+const try_solve::Bool = parsed_args[:try_solve]
 
 # --------------------------------------------------------------------------------------------------------------------------
-# Generate reactions, derivatives, jacobians
+# 7. Generate reactions, derivatives, jacobians
 # --------------------------------------------------------------------------------------------------------------------------
 
 # create vector of reaction objects
@@ -269,7 +254,7 @@ println("num jacobian terms: ", size(jacobian_terms,1) + size(jacobian_terms_ro2
 
 
 # --------------------------------------------------------------------------------------------------------------------------
-# Get rhs and jacobian functions, generate jacobian prototype sparse matrix
+# 8. Get rhs and jacobian functions, generate jacobian prototype sparse matrix
 # --------------------------------------------------------------------------------------------------------------------------
 include("models/$model_name/rhs.jl")
 include("models/$model_name/jacobian.jl")
@@ -287,7 +272,7 @@ jac!(jac_prototype, u₀, nothing, 1.0)
 
 
 # --------------------------------------------------------------------------------------------------------------------------
-#  Set up ODE Defaults
+# 9. Set up ODE Defaults
 # --------------------------------------------------------------------------------------------------------------------------
 
 fun = ODEFunction(rhs!; jac=jac!, jac_prototype=jac_prototype)
@@ -307,7 +292,7 @@ u_h = Obs(u₀, idx_meas[is_meas_not_nan])
 
 
 # --------------------------------------------------------------------------------------------------------------------------
-# Initialize Covariance Matrices
+# 10. Initialize Covariance Matrices
 # --------------------------------------------------------------------------------------------------------------------------
 
 for i ∈ 1:length(u₀)
@@ -332,7 +317,7 @@ end
 u_test, DM_test = Zygote.withjacobian(model_forward, u₀, ts[1])
 
 # --------------------------------------------------------------------------------------------------------------------------
-# Assimilation Loop
+# 11. Assimilation Loop
 # --------------------------------------------------------------------------------------------------------------------------
 
 const u_now::Vector{Float64} = zeros(size(uₐ[:,1]))
@@ -355,9 +340,9 @@ const DM::Matrix{Float64} = DM_test[1]
     DM .= DM_tup[1]  # result is a 1-element tuple, so we index it
 
     # collect observations
-    is_meas_not_nan = get_idxs_not_nans(W[:,k+1])
-    idx_meas_nonan = idx_meas[is_meas_not_nan]
-    u_h = Obs(u_next, idx_meas_nonan)
+    local is_meas_not_nan = get_idxs_not_nans(W[:,k+1])
+    local idx_meas_nonan = idx_meas[is_meas_not_nan]
+    local u_h = Obs(u_next, idx_meas_nonan)
 
 
     # update loop for the mode covariance matrix, Q
@@ -428,6 +413,10 @@ const DM::Matrix{Float64} = DM_test[1]
 end
 
 
+# --------------------------------------------------------------------------------------------------------------------------
+# 12. Post Process
+# --------------------------------------------------------------------------------------------------------------------------
+
 
 # combine output w/ uncertainty from diagonal
 uₐ_nd = uₐ .± sqrt.(P_diag)
@@ -486,10 +475,11 @@ CSV.write("models/$model_name/EKF/ekf_measurements_ϵ.csv", df_w_ϵ)
 
 
 
-# ------------ Plots -----------------
+# --------------------------------------------------------------------------------------------------------------------------
+# 13. Plots
+# --------------------------------------------------------------------------------------------------------------------------
+
 df_species[3,:]
-
-
 
 idx_0 = findfirst(x -> x == 0.0, ts)
 
@@ -557,16 +547,8 @@ idx_0 = findfirst(x -> x == 0.0, ts)
 end
 
 
-df_species
-
-println(mean(ua_mr_vals[8,:]))
-println(median(ua_mr_vals[8,:]))
-println(maximum(ua_mr_vals[8,:]))
-println(minimum(ua_mr_vals[8,:]))
-
-
 # --------------------------------------------------------------------------------------------------------------------------
-# Compute Lifetime
+# 14. Compute Lifetime
 # --------------------------------------------------------------------------------------------------------------------------
 
 # we write the lifetime for species i as
@@ -597,7 +579,7 @@ size(ua_nd)
 
 τs = copy(ua_nd)  # preallocate matrix to hold values
 ℓ_mat = zeros(size(ua_nd))  # loss rate
-ℓ = 1.0
+#ℓ = 1.0
 
 @showprogress for d ∈ 1:length(derivatives)
     derivative = derivatives[d]
@@ -720,7 +702,7 @@ df_τs_means_sorted.τ_weeks = (df_τs_means_sorted.τ_days ./7)
 df_τs_means_sorted.τ_years = (df_τs_means_sorted.τ_days ./365) 
 
 
-CSV.write("mean_lifetimes.csv", df_τs_means_sorted[7:end,:])
+CSV.write("models/$model_name/EKF/mean_lifetimes.csv", df_τs_means_sorted[7:end,:])
 
 
 
