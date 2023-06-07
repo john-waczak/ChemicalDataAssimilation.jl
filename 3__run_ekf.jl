@@ -1,6 +1,11 @@
+ENV["GKSwstype"] = 100
+
+println("Setting Up Julia Environment")
+using Pkg
+Pkg.activate(".")
+Pkg.instantiate()
+
 # investigate possible uses of StaticArrays.jl, specifically the SizedArray{} decorator
-
-
 using ChemicalDataAssimilation
 using DelimitedFiles, CSV, DataFrames  # file reading
 using Plots, StatsPlots # visualization
@@ -16,30 +21,92 @@ using BenchmarkTools
 using LinearAlgebra
 using Measurements
 using SparseArrays
+using ArgParse
 
-# --------------------------------------------------------------------------------------------------------------------------
-# Setup paths
-# --------------------------------------------------------------------------------------------------------------------------
-mechpath = "mechanism-files/extracted/alkanes/methane.fac"
-model_name = "methane"
 
-# mechpath = "mechanism-files/extracted/full/mcm_subset.fac"
-# model_name = "mcm_full"
 
-@assert ispath(mechpath) == true
+function parse_commandline()
+    s = ArgParseSettings()
 
-if !ispath("models/$model_name")
-    mkpath("models/$model_name")
+    @add_arg_table! s begin
+        "--mechanism_path"
+            help = "Path to mechanism `.fac` file specifying the chemical mechanism to be used."
+            arg_type = String
+            default = "mechanism-files/extracted/alkanes/methane.fac"
+        "--model_name", "-n"
+            help = "Name for the resulting model used in output paths"
+            arg_type = String
+            default = "methane"
+        "--time_step", "-t"
+            help = "The time step used during integration of mechanism (in minutes)."
+            arg_type = Float64
+            default = 15.0
+        "--try_solve"
+            help = "Whether or not to precompile solvers by calling once."
+            action = :store_true
+            # arg_type = Bool
+            # default = false
+        "--use_background_cov"
+            help = "Whether or not to use background covariance matrix in loss"
+            action = :store_true
+            # arg_type = Bool
+            # default = false
+        "--fudge_fac", "-f"
+            help = "A fudge factor for manipulating scale of measurement uncertainties"
+            arg_type = Float64
+            default = 0.5
+        "--epsilon", "-e"
+            help = "Estimated background uncertainty for diagonal of B matrix, i.e. uncertainty in initial condition"
+            arg_type = Float64
+            default = 0.5
+    end
+
+
+    parsed_args = parse_args(ARGS, s; as_symbols=true)
+
+    @assert isfile(parsed_args[:mechanism_path]) "Supplied mechanism path does not exist"
+
+
+    # make sure that the datapath and outpath exist
+    if !ispath("models/$(parsed_args[:model_name])")
+        println("$(parsed_args[:model_name]) directory does not exist in `./models`. Creating now...")
+        mkpath(parsed_args[:datapath])
+    end
+
+
+    @assert ispath("data/no_ap/number_densities.csv") "Can not find  data/no_ap/number_densities.csv"
+    @assert ispath("data/w_ap/number_densities.csv") "Can not find  data/w_ap/number_densities.csv"
+    @assert ispath("data/no_ap/number_densities_ϵ.csv") "Can not find  data/no_ap/number_densities_ϵ.csv"
+    @assert ispath("data/w_ap/number_densities_ϵ.csv") "Can not find  data/w_ap/number_densities_ϵ.csv"
+    @assert ispath("models/$(parsed_args[:model_name])/4dvar/u0.csv")  "Can not find models/$(parsed_args[:model_name])/4dvar/u0.csv"
+
+
+
+    return parsed_args
 end
+
+
+
+# 0. parse arguments and set up output directory
+println("Parsing command line arguments...")
+parsed_args = parse_commandline()
+mechpath = parsed_args[:mechanism_path]
+model_name = parsed_args[:model_name]
 
 
 if !isdir("models/$model_name/EKF")
     mkpath("models/$model_name/EKF")
 end
 
+
+
+
+# --------------------------------------------------------------------------------------------------------------------------
+# 1. read in dataframes
+# -------------------------------------------------------------------------------------------------------------------------
+println("Loading Data into DataFrames...")
+
 fac_dict = read_fac_file(mechpath)
-
-
 df_species = CSV.File("models/$model_name/species.csv") |> DataFrame;
 df_params = CSV.File("models/$model_name/state_parameters.csv") |> DataFrame
 df_params_ϵ = CSV.File("models/$model_name/state_parameters_ϵ.csv") |> DataFrame
@@ -51,8 +118,7 @@ df_number_densities_ϵ = CSV.File("models/$model_name/number_densities_ϵ.csv") 
 # --------------------------------------------------------------------------------------------------------------------------
 
 df_u₀ = CSV.File("models/$model_name/4dvar/u0.csv") |> DataFrame
-#df_u₀ = CSV.File("models/$model_name/4dvar/u0_adjusted.csv") |> DataFrame
-u₀ = df_u₀.u₀
+u₀ = df_u₀.u0
 @assert typeof(u₀) == Vector{Float64}
 
 

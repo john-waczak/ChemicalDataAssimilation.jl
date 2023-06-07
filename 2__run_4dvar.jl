@@ -91,7 +91,7 @@ function parse_commandline()
     @assert ispath("data/w_ap/number_densities_ϵ.csv") "Can not find  data/w_ap/number_densities_ϵ.csv"
 
     if parsed_args[:restart]
-        @assert ispath("models/$(parsed_args[:model_name])/4dvar/u0.csv")  "Can not find "
+        @assert ispath("models/$(parsed_args[:model_name])/4dvar/u0.csv")  "Can not find models/$(parsed_args[:model_name])/4dvar/u0.csv"
     end
 
 
@@ -107,6 +107,10 @@ parsed_args = parse_commandline()
 mechpath = parsed_args[:mechanism_path]
 model_name = parsed_args[:model_name]
 want_restart = parsed_args[:restart]
+
+if !isdir("models/$model_name/4dvar")
+    mkpath("models/$model_name/EKF")
+end
 
 
 
@@ -452,8 +456,9 @@ println("First round of optimization:")
 # solve first with ADAM which is fast but can get stuck in local minimum
 
 method1 = ADAM(0.1)
-#method2 = Optim.BFGS(initial_stepnorm=0.01)
-method2=LBFGS()
+method2 = BFGS(initial_stepnorm=0.01)
+
+#method2=LBFGS()  # <-- took bad steps
 if want_restart
     method1 = ADAM(0.005)
 end
@@ -508,7 +513,7 @@ savefig("models/$model_name/4dvar/training_loss.pdf")
 
 
 
-df_out = DataFrame(:u₀ => u0a_final)
+df_out = DataFrame(:u0 => u0a_final)
 
 CSV.write("models/$model_name/4dvar/u0.csv", df_out)
 
