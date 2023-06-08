@@ -21,6 +21,8 @@ include("derivative_structs.jl")
 include("jacobian_struct.jl")
 include("4dvar.jl")
 include("EKF.jl")
+include("conversions.jl")
+
 
 #---
 export read_fac_file, parse_rxns, get_spec_idx
@@ -53,5 +55,8 @@ export JacobianTerms, update_jacobian!, write_jac_func, generate_jac_prototype
 export ObsOpMeas, Rmat, Rinv
 #---
 export JObs, Rmat_nonan, Rinv_nonan, get_idxs_not_nans, Obs, JObs, getTimeIndex, update_uₐ!
+#---
+export to_mixing_ratio, get_reasonable_mr_units
+
 
 end

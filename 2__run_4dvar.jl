@@ -518,9 +518,7 @@ df_out = DataFrame(:u0 => u0a_final)
 CSV.write("models/$model_name/4dvar/u0.csv", df_out)
 
 
-using Measurements
-println("Generating final solution from best u0...")
-# generate solution with final values:
+
 _prob = remake(ode_prob; u0=u0a_final)
 sol = solve(
     _prob,
@@ -531,69 +529,12 @@ sol = solve(
     verbose=false
 )
 
-u_sol = Matrix(sol)
 
-times = tmin:Δt_step:tmax
-
-
-
-spec_names = df_species[idx_meas, "MCM Name"]
-u_meas = u_sol[idx_meas,:]
-
-# collect total number density
-M = df_params[df_params.t .≤ 0.0, :M]
-M_ϵ = df_params_ϵ[df_params.t .≤ 0.0, :M]
-
-# convert number density to mixing ratio
-u_mr = copy(u_meas)
-for j ∈ axes(u_mr,2)
-    u_mr[:,j] .= u_mr[:,j] ./ M[j]
+df_out = DataFrame()
+@showprogress for i ∈ 1:nrow(df_species)
+    df_out[!, df_species[i, "MCM Name"]] = sol[i,:]
 end
 
-# convert to ppb
-u_ppb = u_mr .* 1e9
+df_out[1,:]
+CSV.write("models/$model_name/4dvar/u0_integrated.csv", df_out)
 
-
-# combine measurements w/ uncertainty
-W_ϵ = similar(W)
-for i ∈ 1:length(idx_meas)
-    W_ϵ[i,:] .= [sqrt.(Rmat(t, meas_ϵ; fudge_fac=fudge_fac)[i,i]) for t ∈ 1:size(W,2)]
-end
-
-# convert to mixing ratio
-W_mr = W .± W_ϵ
-for j ∈ axes(W_mr, 2)
-    W_mr[:,j] .= W_mr[:,j] ./ (M[j] ± M_ϵ[j])
-end
-
-# convert to ppb
-W_ppb = W_mr .* 1e9
-
-
-
-# --------------------------------------------------------------------------------------------------------------------------
-#  Generate plots
-# --------------------------------------------------------------------------------------------------------------------------
-println("Generating plots...")
-@showprogress for i ∈ 1:length(idx_meas)
-    plot_spec_name = df_species[idx_meas[i], "MCM Name"]
-    plot(times,
-         u_ppb[i,:],
-         label="4dVar",
-         title=plot_spec_name,
-         lw=3
-         )
-
-    scatter!(times,
-             Measurements.value.(W_ppb[i,:]),
-             yerror=Measurements.uncertainty.(W_ppb[i,:]),
-             label="Measurements",
-             )
-    xlabel!("time [minutes]")
-    ylabel!("concentration [ppb]")
-
-    savefig("models/$model_name/4dvar/$(plot_spec_name)_ppb.png")
-    savefig("models/$model_name/4dvar/$(plot_spec_name)_ppb.pdf")
-end
-
-println("...All done!")
