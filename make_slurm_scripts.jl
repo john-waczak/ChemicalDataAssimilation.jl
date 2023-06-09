@@ -186,10 +186,10 @@ function create_slurm_scripts(parsed_args; n_tasks=8)
     #!/bin/bash
 
     jid1=\$(sbatch 1__$(parsed_args[:model_name]).slurm)
-    jid2=\$(sbatch --dependency=afterany:\$jid1  2__$(parsed_args[:model_name]).slurm)
-    jid3=\$(sbatch --dependency=afterany:\$jid2  2b__$(parsed_args[:model_name]).slurm)
-    jid4=\$(sbatch --dependency=afterany:\$jid2  3__$(parsed_args[:model_name]).slurm)
-    jid5=\$(sbatch --dependency=afterany:\$jid4  3b__$(parsed_args[:model_name]).slurm)
+    jid2=\$(sbatch --dependency=afterany:\${jid1##* }  2__$(parsed_args[:model_name]).slurm)
+    jid3=\$(sbatch --dependency=afterany:\${jid2##* }  2b__$(parsed_args[:model_name]).slurm)
+    jid4=\$(sbatch --dependency=afterany:\${jid2##* }  3__$(parsed_args[:model_name]).slurm)
+    jid5=\$(sbatch --dependency=afterany:\${jid4##* }  3b__$(parsed_args[:model_name]).slurm)
 
     """
     open("submit_jobs__$(parsed_args[:model_name]).sh", "w") do f
