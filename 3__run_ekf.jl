@@ -424,11 +424,7 @@ uₐ_nd = uₐ .± sqrt.(P_diag)
 # convert final output into mixing ratios
 M = df_params.M .± (fudge_fac .* df_params_ϵ.M)
 
-uₐ_mr = copy(uₐ_nd)
-for i ∈ axes(uₐ_mr, 1)
-    # for each species, divide by time-dependent total-number density to get mixing ratio
-    uₐ_mr[i,:] .= uₐ_mr[i,:] ./ M
-end
+uₐ_mr = to_mixing_ratio(uₐ_nd, M)
 
 # chop off values and uncertainties for easier plotting
 ua_mr_vals = Measurements.value.(uₐ_mr)
@@ -453,9 +449,8 @@ CSV.write("models/$model_name/EKF/ekf_ϵ_output.csv", df_ekf_ϵ)
 
 # combine measurements with uncertainties
 W_mr = W .± (fudge_fac .* meas_ϵ)
-for i ∈ axes(W_mr, 1)
-    W_mr[i,:] .= W_mr[i,:] ./ M
-end
+W_mr = to_mixing_ratio(W_mr, M)
+
 W_mr_val = Measurements.value.(W_mr)
 W_mr_ϵ = Measurements.uncertainty.(W_mr)
 
@@ -478,73 +473,6 @@ CSV.write("models/$model_name/EKF/ekf_measurements_ϵ.csv", df_w_ϵ)
 # --------------------------------------------------------------------------------------------------------------------------
 # 13. Plots
 # --------------------------------------------------------------------------------------------------------------------------
-
-df_species[3,:]
-
-idx_0 = findfirst(x -> x == 0.0, ts)
-
-@showprogress for i ∈ 1:nrow(df_species)
-
-
-    plot_spec_name = df_species[df_species.idx_species .== i, "MCM Name"][1]
-    p1 = plot(
-        ts[2:idx_0],
-        ua_mr_vals[i,2:idx_0] * 1e9,
-        ribbon=ua_mr_ϵ[i,2:idx_0] .* 1e9,
-        xlabel="time [minutes]",
-        ylabel="$plot_spec_name concentration [ppb]",
-        label="No ActivePure",
-#        title=plot_spec_name,
-        lw=3,
-        link=:y
-    )
-    plot!(
-        ts[idx_0:end],
-        ua_mr_vals[i,idx_0:end] * 1e9,
-        ribbon=ua_mr_ϵ[i,idx_0:end] .* 1e9,
-        label="With ActivePure",
-        lw=3,
-    )
-
-    # vline!([0.0], lw=3, label="")
-
-    if i ∈ idx_meas
-        idx_to_use = findfirst(x->x==i, idx_meas)
-        scatter!(ts[2:end],
-                 W_mr_val[idx_to_use,2:end] .* 1e9,
-                 yerror=W_mr_ϵ[idx_to_use,2:end] .* 1e9,
-                 label="Measurements",
-                 )
-    end
-
-
-    p2 = violin([plot_spec_name], ua_mr_vals[i,2:idx_0] .* 1e9, side=:left, label="No ActivePure", ymirror=true)
-    violin!([plot_spec_name], ua_mr_vals[i,idx_0:end] .* 1e9 , side=:right, label="With ActivePure")
-
-    mag = 1.35
-    plot(p1,p2, layout=grid(1,2,widths=[0.7,0.3]), size=(mag*600, mag*400), margins=5Plots.mm)
-
-    savefig("models/$model_name/EKF/$(plot_spec_name).png")
-    savefig("models/$model_name/EKF/$(plot_spec_name).pdf")
-
-    # if plot_spec_name ∈ ["OH", "HO2", "O", "O1D"]
-    #     plot(
-    #         ts[2:end],
-    #         log10.(ua_mr_vals[i,2:end]),
-    #         ribbon=log10.(ua_mr_ϵ[i,2:end]),
-    #         xlabel="time [minutes]",
-    #         ylabel="log10 mixing ratio",
-    #         label="EKF",
-    #         title=plot_spec_name,
-    #         lw=3
-    #     )
-
-    #     vline!([0.0], lw=3, label="")
-
-    #     savefig("models/$model_name/EKF/$(plot_spec_name)_log10.png")
-    #     savefig("models/$model_name/EKF/$(plot_spec_name)_log10.pdf")
-    # end
-end
 
 
 # --------------------------------------------------------------------------------------------------------------------------
@@ -618,49 +546,8 @@ for j ∈ axes(τs, 2), i ∈ axes(τs,1)
     τs[i,j] = τs[i,j] / ℓ_mat[i,j]
 end
 
-τs
-
-idx_0 = findfirst(x -> x == 0.0, ts)
-
-@showprogress for i ∈ 1:nrow(df_species)
-    plot_spec_name = df_species[df_species.idx_species .== i, "MCM Name"][1]
-
-    try
-
-        p1 = plot(
-            ts[2:idx_0],
-            τs[i,2:idx_0],
-            xlabel="time [minutes]",
-            ylabel="$plot_spec_name lifetime [seconds]",
-            lw=3,
-            label="No ActivePure",
-        )
 
 
-        plot!(
-            ts[idx_0:end],
-            τs[i,idx_0:end],
-            label="With ActivePure",
-            lw=3,
-        )
-
-        p2 = violin([plot_spec_name], [τ for τ ∈ τs[i,2:idx_0] if !isnan(τ) && !isinf(τ)] , side=:left, label="No ActivePure", ymirror=true)
-        violin!([plot_spec_name], [τ for τ ∈ τs[i,idx_0:end] if !isnan(τ) && !isinf(τ)] , side=:right, label="With ActivePure")
-
-        mag = 1.35
-        plot(p1,p2, layout=grid(1,2,widths=[0.7,0.3]), size=(mag*600, mag*400), margins=5Plots.mm)
-
-        savefig("models/$model_name/EKF/$(plot_spec_name)_lifetime.png")
-        savefig("models/$model_name/EKF/$(plot_spec_name)_lifetime.pdf")
-
-    catch e
-        println(plot_spec_name*" failed to plot!")
-    end
-end
-
-
-
-τs
 # generate lifetime dataframes for output
 df_τs = DataFrame()
 @showprogress for i ∈ axes(τs, 1)
@@ -669,11 +556,8 @@ end
 
 df_τs.t = df_params.t
 
-df_τs.N2O5
-
-describe(df_τs)
-
 CSV.write("models/$model_name/EKF/lifetimes.csv", df_τs)
+
 
 df_τs_means = DataFrame()
 @showprogress for i ∈ axes(τs, 1)
@@ -698,77 +582,8 @@ df_τs_means_sorted = DataFrame(:species => spec_name, :τ_seconds => mean_lifet
 df_τs_means_sorted.τ_minutes = (df_τs_means_sorted.τ_seconds ./ 60)
 df_τs_means_sorted.τ_hours = (df_τs_means_sorted.τ_minutes ./ 60)
 df_τs_means_sorted.τ_days = (df_τs_means_sorted.τ_hours ./ 24)
-df_τs_means_sorted.τ_weeks = (df_τs_means_sorted.τ_days ./7) 
-df_τs_means_sorted.τ_years = (df_τs_means_sorted.τ_days ./365) 
+df_τs_means_sorted.τ_weeks = (df_τs_means_sorted.τ_days ./7)
+df_τs_means_sorted.τ_years = (df_τs_means_sorted.τ_days ./365)
 
 
 CSV.write("models/$model_name/EKF/mean_lifetimes.csv", df_τs_means_sorted[7:end,:])
-
-
-
-# --------------------------------------------------------------------------------------------------------------------------
-# Reaction Network Visualization
-# --------------------------------------------------------------------------------------------------------------------------
-
-
-# using SparseArrays
-# using GraphRecipes
-
-# N_raw = CSV.File("models/$model_name/N.csv") |> DataFrame
-# N = sparse(N_raw.I, N_raw.J, N_raw.V)
-
-# # now remove the old file from memory
-# N_raw = nothing
-# GC.gc()
-
-# N[5,:]
-# df_species[5,:]
-
-# to construct graph, we loop over each reaction and add edges between products and reactants.
-
-# # our graph is really a multigraph, i.e. a graph where we can have n-many edges between each pair of nodes. 
-
-# graphplot([[1,1,2,2],[1,1,1],[1]], names="node_".*string.(1:3), nodeshape=:circle, self_edge_size=0.25)
-
-
-# rxn = rxns[1]
-# fieldnames(typeof(rxn))
-
-
-# edges_mat = [[] for _ ∈ 1:nrow(df_species)]
-
-# @showprogress for rxn ∈ rxns
-#     for i ∈ rxn.idxs_in
-#         for j ∈ rxn.idxs_out
-#             push!(edges_mat[i], j)
-#         end
-#     end
-# end
-
-# graphplot(edges_mat,
-#           names=df_species[!, "MCM Name"],
-#           method=:chorddiagram,
-# #          fontsize=10,
-# #          nodeshape=:circle,
-# #          nodesize=0.125,
-#           size=(1000,1000)
-#           )
-
-# savefig("models/$model_name/network_vis.png")
-# savefig("models/$model_name/network_vis.pdf")
-
-# # ideas, instead have a marker for species and a separate marker for reactions. Then we can easily
-# # visualize the inputs and outputs of each reaction.
-# # we can then scale/color the reaction nodes by mean lifetime (or do a video of the lifetime)
-# # but to do so we need to fix the positions of each node so that they don't change between frames
-# # further we can color each of the species nodes by it's category i.e. source, scavenger, reactive species, reservoir....
-
-# # further, we can use MetaGraphs.jl to include meta-information such as lifetimes, reaction rate coefficients, nice
-# # latexified formula names, etc...
-
-
-
-# # do a graph for each individual species including all those reactions which it is involved in.
-
-
-

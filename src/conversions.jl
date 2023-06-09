@@ -34,3 +34,18 @@ function get_reasonable_mr_units(X)
         return units[idx_min], multiplier[idx_min]
     end
 end
+
+
+function get_reasonable_time_units(X)
+    mean_val = mean(X)
+
+    units = ["μs","ms", "s", "min", "hour", "days", "weeks", "years"]
+    scale = [1e-6, 1e-3, 1, 60, 60^2, 60^2*24, 60^2*24*7, 60^2*24*356]
+    multiplier = [1/s for s ∈ scale]
+
+    # compute abs difference between mean and scales
+    idx_min = argmin(abs.(mean_val .- scale))
+    min_diff = minimum(abs.(mean_val .- scale))
+
+    return units[idx_min], multiplier[idx_min]
+end

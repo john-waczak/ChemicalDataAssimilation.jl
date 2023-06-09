@@ -87,7 +87,7 @@ u_meas = u_sol[idx_meas,:]
 
 
 # 4. convert number density to mixing ratio
-M = df_params[df_params.t .≤ 0.0, :M] .± df_params_ϵ[df_params.t .≤ 0.0, :M]  # <-- total number density
+M = df_params[df_params.t .≤ 0.0, :M] .± (fugde_fac .* df_params_ϵ[df_params.t .≤ 0.0, :M])  # <-- total number density
 u_mr = to_mixing_ratio(u_meas , Measurements.value.(M))
 W =  Matrix(df_nd_to_use)' .±  (fudge_fac .* Matrix(df_nd_to_use_ϵ)')
 W_mr = to_mixing_ratio(W, M)

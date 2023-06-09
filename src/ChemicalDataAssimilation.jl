@@ -56,7 +56,7 @@ export ObsOpMeas, Rmat, Rinv
 #---
 export JObs, Rmat_nonan, Rinv_nonan, get_idxs_not_nans, Obs, JObs, getTimeIndex, update_uₐ!
 #---
-export to_mixing_ratio, get_reasonable_mr_units
+export to_mixing_ratio, get_reasonable_mr_units, get_reasonable_time_units
 
 
 end
