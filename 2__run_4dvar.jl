@@ -50,18 +50,12 @@ function parse_commandline()
         "--restart"
             help = "Whether or not to restart 4d_var from previous fitresult"
             action = :store_true
-            # arg_type = Bool
-            # default = false
         "--try_solve"
             help = "Whether or not to precompile solvers by calling once."
             action = :store_true
-            # arg_type = Bool
-            # default = false
         "--use_background_cov"
             help = "Whether or not to use background covariance matrix in loss"
             action = :store_true
-            # arg_type = Bool
-            # default = false
         "--fudge_fac", "-f"
             help = "A fudge factor for manipulating scale of measurement uncertainties"
             arg_type = Float64

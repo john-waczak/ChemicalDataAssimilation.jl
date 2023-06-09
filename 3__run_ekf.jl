@@ -44,8 +44,6 @@ function parse_commandline()
         "--try_solve"
             help = "Whether or not to precompile solvers by calling once."
             action = :store_true
-            # arg_type = Bool
-            # default = false
         "--fudge_fac", "-f"
             help = "A fudge factor for manipulating scale of measurement uncertainties"
             arg_type = Float64
