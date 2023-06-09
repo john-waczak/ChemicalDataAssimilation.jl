@@ -39,11 +39,11 @@ function parse_commandline()
             help = "Path to mechanism `.fac` file specifying the chemical mechanism to be used."
             arg_type = String
             default = "mechanism-files/extracted/alkanes/methane.fac"
-        "--model_name", "-n"
+        "--model_name"
             help = "Name for the resulting model used in output paths"
             arg_type = String
             default = "methane"
-        "--time_step", "-t"
+        "--time_step"
             help = "The time step used during integration of mechanism (in minutes)."
             arg_type = Float64
             default = 15.0
@@ -56,11 +56,11 @@ function parse_commandline()
         "--use_background_cov"
             help = "Whether or not to use background covariance matrix in loss"
             action = :store_true
-        "--fudge_fac", "-f"
+        "--fudge_fac"
             help = "A fudge factor for manipulating scale of measurement uncertainties"
             arg_type = Float64
             default = 0.5
-        "--epsilon", "-e"
+        "--epsilon"
             help = "Estimated background uncertainty for diagonal of B matrix, i.e. uncertainty in initial condition"
             arg_type = Float64
             default = 0.5

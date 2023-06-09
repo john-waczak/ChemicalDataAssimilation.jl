@@ -23,7 +23,7 @@ function parse_commandline()
     s = ArgParseSettings()
 
     @add_arg_table! s begin
-        "--model_name", "-n"
+        "--model_name"
         help = "Name for the resulting model used in output paths"
         arg_type = String
         default = "methane"

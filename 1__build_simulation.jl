@@ -23,11 +23,11 @@ function parse_commandline()
             help = "Path to mechanism `.fac` file specifying the chemical mechanism to be used."
             arg_type = String
             default = "mechanism-files/extracted/alkanes/methane.fac"
-        "--model_name", "-n"
+        "--model_name"
             help = "Name for the resulting model used in output paths"
             arg_type = String
             default = "methane"
-        "--time_step", "-t"
+        "--time_step"
             help = "The time step used during integration of mechanism (in minutes)."
             arg_type = Float64
             default = 15.0

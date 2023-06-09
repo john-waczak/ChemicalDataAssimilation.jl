@@ -24,18 +24,18 @@ function parse_commandline()
     s = ArgParseSettings()
 
     @add_arg_table! s begin
-        "--model_name", "-n"
+        "--model_name"
             help = "Name for the resulting model used in output paths"
             arg_type = String
             default = "methane"
-        "--time_step", "-t"
+        "--time_step"
             help = "The time step used during integration of mechanism (in minutes)."
             arg_type = Float64
             default = 15.0
         "--restart"
             help = "Whether or not to restart 4d_var from previous fitresult"
             action = :store_true
-        "--fudge_fac", "-f"
+        "--fudge_fac"
             help = "A fudge factor for manipulating scale of measurement uncertainties"
             arg_type = Float64
             default = 0.5
