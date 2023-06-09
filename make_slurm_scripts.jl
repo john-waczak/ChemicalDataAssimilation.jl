@@ -119,9 +119,9 @@ function create_slurm_scripts(parsed_args; n_tasks=8)
 
     RES=\$(sbatch 1__$(parsed_args[:model_name]).slurm)
     RES2=\$(sbatch --dependency=afterany:\${RES##* }  2__$(parsed_args[:model_name]).slurm)
-    sbatch --dependency=afterany:\${RES2##* }  2b__$(parsed_args[:model_name]).slurm)
+    sbatch --dependency=afterany:\${RES2##* }  2b__$(parsed_args[:model_name]).slurm
     RES3=\$(sbatch --dependency=afterany:\${RES2##* }  3__$(parsed_args[:model_name]).slurm)
-    sbatch --dependency=afterany:\${RES3##* }  3b__$(parsed_args[:model_name]).slurm)
+    sbatch --dependency=afterany:\${RES3##* }  3b__$(parsed_args[:model_name]).slurm
 
     """
     open("submit_jobs__$(parsed_args[:model_name]).sh", "w") do f
