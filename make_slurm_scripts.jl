@@ -49,12 +49,80 @@ end
 
 
 function create_slurm_scripts(parsed_args; n_tasks=8)
-    preamble = """
+    preamble1 = """
     #!/bin/bash
 
-    #SBATCH     --job-name=$(parsed_args[:model_name])
-    #SBATCH     --output=$(parsed_args[:model_name]).out
-    #SBATCH     --error=$(parsed_args[:model_name]).err
+    #SBATCH     --job-name=1__$(parsed_args[:model_name])
+    #SBATCH     --output=1__$(parsed_args[:model_name]).out
+    #SBATCH     --error=1__$(parsed_args[:model_name]).err
+    #SBATCH     --nodes=1
+    #SBATCH     --ntasks=1
+    #SBATCH     --cpus-per-task=$(n_tasks)   # number of threads for multi-threading
+    #SBATCH     --time=2-00:00:00  # 2 day max
+    #SBATCH     --mem=12G
+    #SBATCH     --mail-type=ALL
+    #SBATCH     --mail-user=jxw190004@utdallas.edu
+    #SBATCH     --partition=normal
+
+    """
+
+    preamble2 = """
+    #!/bin/bash
+
+    #SBATCH     --job-name=2__$(parsed_args[:model_name])
+    #SBATCH     --output=2__$(parsed_args[:model_name]).out
+    #SBATCH     --error=2__$(parsed_args[:model_name]).err
+    #SBATCH     --nodes=1
+    #SBATCH     --ntasks=1
+    #SBATCH     --cpus-per-task=$(n_tasks)   # number of threads for multi-threading
+    #SBATCH     --time=2-00:00:00  # 2 day max
+    #SBATCH     --mem=12G
+    #SBATCH     --mail-type=ALL
+    #SBATCH     --mail-user=jxw190004@utdallas.edu
+    #SBATCH     --partition=normal
+
+    """
+
+    preamble2b = """
+    #!/bin/bash
+
+    #SBATCH     --job-name=2b__$(parsed_args[:model_name])
+    #SBATCH     --output=2b__$(parsed_args[:model_name]).out
+    #SBATCH     --error=2b__$(parsed_args[:model_name]).err
+    #SBATCH     --nodes=1
+    #SBATCH     --ntasks=1
+    #SBATCH     --cpus-per-task=$(n_tasks)   # number of threads for multi-threading
+    #SBATCH     --time=2-00:00:00  # 2 day max
+    #SBATCH     --mem=12G
+    #SBATCH     --mail-type=ALL
+    #SBATCH     --mail-user=jxw190004@utdallas.edu
+    #SBATCH     --partition=normal
+
+    """
+
+    preamble3 = """
+    #!/bin/bash
+
+    #SBATCH     --job-name=3__$(parsed_args[:model_name])
+    #SBATCH     --output=3__$(parsed_args[:model_name]).out
+    #SBATCH     --error=3__$(parsed_args[:model_name]).err
+    #SBATCH     --nodes=1
+    #SBATCH     --ntasks=1
+    #SBATCH     --cpus-per-task=$(n_tasks)   # number of threads for multi-threading
+    #SBATCH     --time=2-00:00:00  # 2 day max
+    #SBATCH     --mem=12G
+    #SBATCH     --mail-type=ALL
+    #SBATCH     --mail-user=jxw190004@utdallas.edu
+    #SBATCH     --partition=normal
+
+    """
+
+    preamble3b = """
+    #!/bin/bash
+
+    #SBATCH     --job-name=3b__$(parsed_args[:model_name])
+    #SBATCH     --output=3b__$(parsed_args[:model_name]).out
+    #SBATCH     --error=3b__$(parsed_args[:model_name]).err
     #SBATCH     --nodes=1
     #SBATCH     --ntasks=1
     #SBATCH     --cpus-per-task=$(n_tasks)   # number of threads for multi-threading
@@ -89,27 +157,27 @@ function create_slurm_scripts(parsed_args; n_tasks=8)
 
 
     open("1__$(parsed_args[:model_name]).slurm", "w") do f
-        println(f, preamble)
+        println(f, preamble1)
         println(f, step1)
     end
 
     open("2__$(parsed_args[:model_name]).slurm", "w") do f
-        println(f, preamble)
+        println(f, preamble2)
         println(f, step2)
     end
 
     open("2b__$(parsed_args[:model_name]).slurm", "w") do f
-        println(f, preamble)
+        println(f, preamble2b)
         println(f, step2b)
     end
 
     open("3__$(parsed_args[:model_name]).slurm", "w") do f
-        println(f, preamble)
+        println(f, preamble3)
         println(f, step3)
     end
 
     open("3b__$(parsed_args[:model_name]).slurm", "w") do f
-        println(f, preamble)
+        println(f, preamble3b)
         println(f, step3b)
     end
 
@@ -117,11 +185,11 @@ function create_slurm_scripts(parsed_args; n_tasks=8)
     final_script = """
     #!/bin/bash
 
-    RES=\$(sbatch 1__$(parsed_args[:model_name]).slurm)
-    RES2=\$(sbatch --dependency=afterany:\${RES##* }  2__$(parsed_args[:model_name]).slurm)
-    sbatch --dependency=afterany:\${RES2##* }  2b__$(parsed_args[:model_name]).slurm
-    RES3=\$(sbatch --dependency=afterany:\${RES2##* }  3__$(parsed_args[:model_name]).slurm)
-    sbatch --dependency=afterany:\${RES3##* }  3b__$(parsed_args[:model_name]).slurm
+    jid1=\$(sbatch 1__$(parsed_args[:model_name]).slurm)
+    jid2=\$(sbatch --dependency=afterany:\$jid1  2__$(parsed_args[:model_name]).slurm)
+    jid3=\$(sbatch --dependency=afterany:\$jid2  2b__$(parsed_args[:model_name]).slurm)
+    jid4=\$(sbatch --dependency=afterany:\$jid2  3__$(parsed_args[:model_name]).slurm)
+    jid5=\$(sbatch --dependency=afterany:\$jid4  3b__$(parsed_args[:model_name]).slurm)
 
     """
     open("submit_jobs__$(parsed_args[:model_name]).sh", "w") do f
