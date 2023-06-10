@@ -33,8 +33,7 @@ function parse_commandline()
             default = 15.0
         "--use_updated_photolysis"
             help = "Whether or not to use updated photolysis"
-            arg_type = Bool
-            default = true
+            action = :store_true
     end
 
 
