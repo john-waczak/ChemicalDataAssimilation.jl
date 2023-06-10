@@ -71,11 +71,9 @@ function parse_commandline()
 
     @assert isfile(parsed_args[:mechanism_path]) "Supplied mechanism path does not exist"
 
-
-    # make sure that the datapath and outpath exist
     if !ispath("models/$(parsed_args[:model_name])")
         println("$(parsed_args[:model_name]) directory does not exist in `./models`. Creating now...")
-        mkpath(parsed_args[:datapath])
+        mkpath("models/$(parsed_args[:model_name])")
     end
 
 
