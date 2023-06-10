@@ -73,6 +73,9 @@ model_name = parsed_args[:model_name]
 fac_dict = read_fac_file(mechpath)
 
 # 1. generate species indices, names, etc...
+println("Species: ")
+println(size(generate_species(fac_dict)))
+
 generate_species_df("models/names.csv", fac_dict; model_name=model_name)
 df_species = CSV.File("models/$model_name/species.csv") |> DataFrame
 
@@ -86,6 +89,7 @@ generate_densities("data/no_ap/number_densities_ϵ.csv",
                     "data/w_ap/number_densities_ϵ.csv";
                     model_name=model_name
                     )
+
 
 df_params = CSV.File("models/$model_name/state_parameters.csv") |> DataFrame
 df_number_densities = CSV.File("models/$model_name/number_densities.csv") |> DataFrame
@@ -121,14 +125,14 @@ generate_rrates(fac_dict,
 include("./models/$model_name/rrate_coeffs.jl")
 df_rrate_coeffs = CSV.File("./models/$model_name/rrate_coeffs.csv") |> DataFrame
 
-
 # 5. generate indices for ro2 sum
 generate_ro2(fac_dict,
               model_name=model_name
               )
 include("./models/$model_name/ro2.jl")
 idx_ro2  # this is the array w/ ro2 indices
-
+# println("idx ro2: ", idx_ro2)
+# println("type: ", typeof(idx_ro2), " eltype: ", eltype(idx_ro2))
 
 
 # 6. generate sane initial conditions

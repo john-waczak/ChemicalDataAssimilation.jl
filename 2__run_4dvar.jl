@@ -76,7 +76,6 @@ function parse_commandline()
         mkpath("models/$(parsed_args[:model_name])")
     end
 
-
     @assert ispath("data/no_ap/number_densities.csv") "Can not find  data/no_ap/number_densities.csv"
     @assert ispath("data/w_ap/number_densities.csv") "Can not find  data/w_ap/number_densities.csv"
     @assert ispath("data/no_ap/number_densities_ϵ.csv") "Can not find  data/no_ap/number_densities_ϵ.csv"
@@ -101,7 +100,7 @@ model_name = parsed_args[:model_name]
 want_restart = parsed_args[:restart]
 
 if !isdir("models/$model_name/4dvar")
-    mkpath("models/$model_name/EKF")
+    mkpath("models/$model_name/4dvar")
 end
 
 
@@ -436,7 +435,7 @@ end
 
 
 if try_solve
-    Zygote.gradient(loss, log_u0a)
+    Zygote.gradient(loss, u0a)
 end
 
 
