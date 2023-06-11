@@ -69,9 +69,14 @@ df_sol = CSV.File("models/$model_name/4dvar/u0_integrated.csv") |> DataFrame
 idx_meas::Vector{Int} = Int[]
 measurements_to_ignore = [:C2H6]  # skip any with nans
 is_meas_in_mechanism = [spec ∈ df_species[!, "MCM Name"] for spec ∈ names(df_number_densities[:, Not([measurements_to_ignore..., :t, :w_ap])])]
-idx_ts_to_use = df_number_densities.t .≤ 0.0
+
+idx_ts_to_use = df_params.t .≤ 0.0
 df_nd_to_use = df_number_densities[idx_ts_to_use, Not([measurements_to_ignore..., :t, :w_ap])]
+df_nd_to_use = df_nd_to_use[:, is_meas_in_mechanism]
+
 df_nd_to_use_ϵ = df_number_densities_ϵ[idx_ts_to_use, Not([measurements_to_ignore..., :t, :w_ap])]
+df_nd_to_use_ϵ = df_nd_to_use_ϵ[:, is_meas_in_mechanism]
+
 
 for spec_name ∈ names(df_nd_to_use)
     println(spec_name)
