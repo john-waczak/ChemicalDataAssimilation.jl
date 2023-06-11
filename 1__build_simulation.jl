@@ -76,7 +76,7 @@ fac_dict = read_fac_file(mechpath)
 println("Species: ")
 println(size(generate_species(fac_dict)))
 
-generate_species_df("models/names.csv", fac_dict; model_name=model_name)
+generate_species_df("data/names.csv", fac_dict; model_name=model_name)
 df_species = CSV.File("models/$model_name/species.csv") |> DataFrame
 
 
