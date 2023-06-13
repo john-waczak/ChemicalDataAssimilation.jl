@@ -99,6 +99,10 @@ mechpath = parsed_args[:mechanism_path]
 model_name = parsed_args[:model_name]
 want_restart = parsed_args[:restart]
 
+mechpath = "mechanism-files/extracted/other/all_meth_vocs.fac"
+model_name = "all_meth"
+solver = QNDF()
+
 if !isdir("models/$model_name/4dvar")
     mkpath("models/$model_name/4dvar")
 end
@@ -337,99 +341,132 @@ fun2 = ODEFunction(rhs!; jac=jac!)
 ode_prob = @time ODEProblem{true, SciMLBase.FullSpecialize}(fun, u₀, tspan)
 ode_prob2 = @time ODEProblem{true, SciMLBase.FullSpecialize}(fun2, u₀, tspan)
 
-# do we want reltol and abstol to be the same? 
+# do we want reltol and abstol to be the same?
 if try_solve
-    sol = solve(ode_prob, CVODE_BDF(); saveat=15.0, reltol=tol, abstol=tol);
+    sol = solve(ode_prob, solver; saveat=15.0, reltol=tol, abstol=tol);
 end
 
 
 
-# test out some different algorithms
+# # test out some different algorithms
 
-@benchmark solve(ode_prob, CVODE_BDF(); saveat=15.0, reltol=tol, abstol=tol)  # 425.563 μs, 996 allocs
-SciMLBase.isautodifferentiable(CVODE_BDF())  # false
+# @benchmark solve(ode_prob, CVODE_BDF(); saveat=15.0, reltol=tol, abstol=tol)  # 425.563 μs, 996 allocs
+# SciMLBase.isautodifferentiable(CVODE_BDF())  # false
 
-@benchmark solve(ode_prob, TRBDF2(); saveat=15.0, reltol=tol, abstol=tol)  # 1.479 ms, 13262 allocs
-SciMLBase.isautodifferentiable(TRBDF2())  # true
+# @benchmark solve(ode_prob, TRBDF2(); saveat=15.0, reltol=tol, abstol=tol)  # 1.479 ms, 13262 allocs
+# SciMLBase.isautodifferentiable(TRBDF2())  # true
 
-@benchmark solve(ode_prob, Trapezoid(); saveat=15.0, reltol=tol, abstol=tol)  # 1.008 ms, 8028 allocs
-SciMLBase.isautodifferentiable(Trapezoid())  # true
-
-
-
-@benchmark solve(ode_prob, RadauIIA3(); saveat=15.0, reltol=tol, abstol=tol)  # 5.892 ms, 25486 allocs
-SciMLBase.isautodifferentiable(RadauIIA3())  # true
-
-# this one fails due to time gradients
-# we may also need to augment code to accept types other than just Float64
-# we can turn off autodiff but this may have performance penalties
-@benchmark solve(ode_prob, Rodas5(autodiff=false); saveat=15.0, reltol=tol, abstol=tol)  # 2.452 ms, 16384 allocs
-SciMLBase.isautodifferentiable(Rodas5(autodiff=false))  # true
-
-@benchmark solve(ode_prob, KenCarp4(); saveat=15.0, reltol=tol, abstol=tol)  # 1.254 ms, 9718 allocs
-SciMLBase.isautodifferentiable(KenCarp4())  # true
-
-@benchmark solve(ode_prob, KenCarp47(); saveat=15.0, reltol=tol, abstol=tol)  # 1.307 ms, 10196
-SciMLBase.isautodifferentiable(KenCarp47())  # true
-
-@benchmark solve(ode_prob, SDIRK2(); saveat=15.0, reltol=tol, abstol=tol)  # 6.401 ms, 52738 allocs
-SciMLBase.isautodifferentiable(SDIRK2())  # true
-
-@benchmark solve(ode_prob, Hairer4(); saveat=15.0, reltol=tol, abstol=tol)  # 3.199 ms, 27327 allocs
-SciMLBase.isautodifferentiable(Hairer4())  # true
-
-@benchmark solve(ode_prob, FBDF(); saveat=15.0, reltol=tol, abstol=tol)  # 1.607 ms, 11739
-SciMLBase.isautodifferentiable(FBDF())  # true
-
-@benchmark solve(ode_prob, QBDF(); saveat=15.0, reltol=tol, abstol=tol)  # 1.194 ms, 9075
-SciMLBase.isautodifferentiable(QBDF())  # true
-
-@benchmark solve(ode_prob, QNDF(); saveat=15.0, reltol=tol, abstol=tol)  # 981.927 μs, 7302
-SciMLBase.isautodifferentiable(QNDF())  # true
+# @benchmark solve(ode_prob, Trapezoid(); saveat=15.0, reltol=tol, abstol=tol)  # 1.008 ms, 8028 allocs
+# SciMLBase.isautodifferentiable(Trapezoid())  # true
 
 
 
+# @benchmark solve(ode_prob, RadauIIA3(); saveat=15.0, reltol=tol, abstol=tol)  # 5.892 ms, 25486 allocs
+# SciMLBase.isautodifferentiable(RadauIIA3())  # true
 
-# doesn't work with sparse matrices...
-@benchmark solve(ode_prob2, ImplicitDeuflhardExtrapolation(); saveat=15.0, reltol=tol, abstol=tol)  # 33.299 s, 37000431 allocs
-SciMLBase.isautodifferentiable(ImplicitDeuflhardExtrapolation()) # true
+# # this one fails due to time gradients
+# # we may also need to augment code to accept types other than just Float64
+# # we can turn off autodiff but this may have performance penalties
+# @benchmark solve(ode_prob, Rodas5(autodiff=false); saveat=15.0, reltol=tol, abstol=tol)  # 2.452 ms, 16384 allocs
+# SciMLBase.isautodifferentiable(Rodas5(autodiff=false))  # true
 
-# harmonic is the default
-@benchmark solve(ode_prob2, ImplicitHairerWannerExtrapolation(sequence=:harmonic); saveat=15.0, reltol=tol, abstol=tol)  # 723.094 μs, 544 allocs ! <--- is this a winner?
-@benchmark solve(ode_prob2, ImplicitHairerWannerExtrapolation(sequence=:bulirsch); saveat=15.0, reltol=tol, abstol=tol)  # 758.708 μs, 548 allocs
-@benchmark solve(ode_prob2, ImplicitHairerWannerExtrapolation(sequence=:romberg); saveat=15.0, reltol=tol, abstol=tol)  # 885.007 μs, 625 allocs
-SciMLBase.isautodifferentiable(ImplicitHairerWannerExtrapolation())
+# @benchmark solve(ode_prob, KenCarp4(); saveat=15.0, reltol=tol, abstol=tol)  # 1.254 ms, 9718 allocs
+# SciMLBase.isautodifferentiable(KenCarp4())  # true
 
-# multithreading recommended for systems of >150 odes
-@benchmark solve(ode_prob2, ImplicitHairerWannerExtrapolation(sequence=:harmonic, threading=true); saveat=15.0, reltol=tol, abstol=tol)  # 717.360 μs, 861 allocs ! <--- is this a winner?
-@benchmark solve(ode_prob2, ImplicitHairerWannerExtrapolation(sequence=:bulirsch, threading=true); saveat=15.0, reltol=tol, abstol=tol)  # 1.060 ms, 864 allocs
-@benchmark solve(ode_prob2, ImplicitHairerWannerExtrapolation(sequence=:romberg, threading=true); saveat=15.0, reltol=tol, abstol=tol)  #  1.133 ms, 907 allocs
-SciMLBase.isautodifferentiable(ImplicitHairerWannerExtrapolation())
+# @benchmark solve(ode_prob, KenCarp47(); saveat=15.0, reltol=tol, abstol=tol)  # 1.307 ms, 10196
+# SciMLBase.isautodifferentiable(KenCarp47())  # true
 
+# @benchmark solve(ode_prob, SDIRK2(); saveat=15.0, reltol=tol, abstol=tol)  # 6.401 ms, 52738 allocs
+# SciMLBase.isautodifferentiable(SDIRK2())  # true
 
-# see this page for details (final paragraph where Deuflhard, Hairer, and Wanner make an appearance)
-# https://en.wikipedia.org/wiki/Bulirsch%E2%80%93Stoer_algorithm
+# @benchmark solve(ode_prob, Hairer4(); saveat=15.0, reltol=tol, abstol=tol)  # 3.199 ms, 27327 allocs
+# SciMLBase.isautodifferentiable(Hairer4())  # true
 
-# The AitkenNeville uses polynomial extrapolation (which seems to struggle more) with a romberg sequence
-@benchmark solve(ode_prob, AitkenNeville(); saveat=15.0, reltol=tol, abstol=tol) # 9.825 s, 10000350 allocs
-SciMLBase.isautodifferentiable(AitkenNeville())
+# @benchmark solve(ode_prob, FBDF(); saveat=15.0, reltol=tol, abstol=tol)  # 1.607 ms, 11739
+# SciMLBase.isautodifferentiable(FBDF())  # true
 
+# @benchmark solve(ode_prob, QBDF(); saveat=15.0, reltol=tol, abstol=tol)  # 1.194 ms, 9075
+# SciMLBase.isautodifferentiable(QBDF())  # true
 
-# NOTE: This is failing
-@benchmark solve(ode_prob, ExtrapolationMidpointDeuflhard(sequence=:harmonic); saveat=15.0, reltol=tol, abstol=tol)
-@benchmark solve(ode_prob, ExtrapolationMidpointDeuflhard(sequence=:romberg); saveat=15.0, reltol=tol, abstol=tol)
-@benchmark solve(ode_prob, ExtrapolationMidpointDeuflhard(sequence=:bulirsch); saveat=15.0, reltol=tol, abstol=tol)
-SciMLBase.isautodifferentiable(ExtrapolationMidpointDeuflhard())
-
-
-# NOTE: This is failing
-@benchmark solve(ode_prob, ExtrapolationMidpointHairerWanner(sequence=:harmonic); saveat=15.0, reltol=tol, abstol=tol)  # 38.818 s, 60044866 allocs
-@benchmark solve(ode_prob, ExtrapolationMidpointHairerWanner(sequence=:romberg); saveat=15.0, reltol=tol, abstol=tol)
-@benchmark solve(ode_prob, ExtrapolationMidpointHairerWanner(sequence=:bulirsch); saveat=15.0, reltol=tol, abstol=tol)
-SciMLBase.isautodifferentiable(ExtrapolationMidpointHairerWanner)
+# @benchmark solve(ode_prob, QNDF(); saveat=15.0, reltol=tol, abstol=tol)  # 981.927 μs, 7302
+# SciMLBase.isautodifferentiable(QNDF())  # true
 
 
 
+
+# # doesn't work with sparse matrices...
+# @benchmark solve(ode_prob2, ImplicitDeuflhardExtrapolation(); saveat=15.0, reltol=tol, abstol=tol)  # 33.299 s, 37000431 allocs
+# SciMLBase.isautodifferentiable(ImplicitDeuflhardExtrapolation()) # true
+
+# # harmonic is the default
+# @benchmark solve(ode_prob2, ImplicitHairerWannerExtrapolation(sequence=:harmonic); saveat=15.0, reltol=tol, abstol=tol)  # 723.094 μs, 544 allocs ! <--- is this a winner?
+# @benchmark solve(ode_prob2, ImplicitHairerWannerExtrapolation(sequence=:bulirsch); saveat=15.0, reltol=tol, abstol=tol)  # 758.708 μs, 548 allocs
+# @benchmark solve(ode_prob2, ImplicitHairerWannerExtrapolation(sequence=:romberg); saveat=15.0, reltol=tol, abstol=tol)  # 885.007 μs, 625 allocs
+# SciMLBase.isautodifferentiable(ImplicitHairerWannerExtrapolation())
+
+# # multithreading recommended for systems of >150 odes
+# @benchmark solve(ode_prob2, ImplicitHairerWannerExtrapolation(sequence=:harmonic, threading=true); saveat=15.0, reltol=tol, abstol=tol)  # 717.360 μs, 861 allocs ! <--- is this a winner?
+# @benchmark solve(ode_prob2, ImplicitHairerWannerExtrapolation(sequence=:bulirsch, threading=true); saveat=15.0, reltol=tol, abstol=tol)  # 1.060 ms, 864 allocs
+# @benchmark solve(ode_prob2, ImplicitHairerWannerExtrapolation(sequence=:romberg, threading=true); saveat=15.0, reltol=tol, abstol=tol)  #  1.133 ms, 907 allocs
+# SciMLBase.isautodifferentiable(ImplicitHairerWannerExtrapolation())
+
+
+# # see this page for details (final paragraph where Deuflhard, Hairer, and Wanner make an appearance)
+# # https://en.wikipedia.org/wiki/Bulirsch%E2%80%93Stoer_algorithm
+
+# # The AitkenNeville uses polynomial extrapolation (which seems to struggle more) with a romberg sequence
+# @benchmark solve(ode_prob, AitkenNeville(); saveat=15.0, reltol=tol, abstol=tol) # 9.825 s, 10000350 allocs
+# SciMLBase.isautodifferentiable(AitkenNeville())
+
+
+# # NOTE: This is failing
+# @benchmark solve(ode_prob, ExtrapolationMidpointDeuflhard(sequence=:harmonic); saveat=15.0, reltol=tol, abstol=tol)
+# @benchmark solve(ode_prob, ExtrapolationMidpointDeuflhard(sequence=:romberg); saveat=15.0, reltol=tol, abstol=tol)
+# @benchmark solve(ode_prob, ExtrapolationMidpointDeuflhard(sequence=:bulirsch); saveat=15.0, reltol=tol, abstol=tol)
+# SciMLBase.isautodifferentiable(ExtrapolationMidpointDeuflhard())
+
+
+# # NOTE: This is failing
+# @benchmark solve(ode_prob, ExtrapolationMidpointHairerWanner(sequence=:harmonic); saveat=15.0, reltol=tol, abstol=tol)  # 38.818 s, 60044866 allocs
+# @benchmark solve(ode_prob, ExtrapolationMidpointHairerWanner(sequence=:romberg); saveat=15.0, reltol=tol, abstol=tol)
+# @benchmark solve(ode_prob, ExtrapolationMidpointHairerWanner(sequence=:bulirsch); saveat=15.0, reltol=tol, abstol=tol)
+# SciMLBase.isautodifferentiable(ExtrapolationMidpointHairerWanner)
+
+
+
+# # benchmark results on full all_meth dataset
+
+# @benchmark solve(ode_prob, CVODE_BDF(); saveat=15.0, reltol=tol, abstol=tol)  # 1.352 s, 937 allocs
+# SciMLBase.isautodifferentiable(CVODE_BDF())  # false
+
+# @benchmark solve(ode_prob, TRBDF2(); saveat=15.0, reltol=tol, abstol=tol)  # 25.575 ms, 12293 allocs
+# SciMLBase.isautodifferentiable(TRBDF2())  # true
+
+
+# # took way too long:
+# # RadauIIA3  55.710 s
+
+
+# @benchmark solve(ode_prob, KenCarp4(); saveat=15.0, reltol=tol, abstol=tol)  # 27.921 ms, 11753 allocs
+# SciMLBase.isautodifferentiable(KenCarp4())  # true
+
+# @benchmark solve(ode_prob, KenCarp47(); saveat=15.0, reltol=tol, abstol=tol)  # 27.778  ms, 11768
+# SciMLBase.isautodifferentiable(KenCarp47())  # true
+
+# @benchmark solve(ode_prob, SDIRK2(); saveat=15.0, reltol=tol, abstol=tol)  # 113.031 ms, 54646 allocs
+# SciMLBase.isautodifferentiable(SDIRK2())  # true
+
+# @benchmark solve(ode_prob, Hairer4(); saveat=15.0, reltol=tol, abstol=tol)  # 51.146 ms, 24057 allocs
+# SciMLBase.isautodifferentiable(Hairer4())  # true
+
+# @benchmark solve(ode_prob, FBDF(); saveat=15.0, reltol=tol, abstol=tol)  # 28.659 ms, 10780
+# SciMLBase.isautodifferentiable(FBDF())  # true
+
+# @benchmark solve(ode_prob, QBDF(); saveat=15.0, reltol=tol, abstol=tol)  # 24.514 ms, 10523
+# SciMLBase.isautodifferentiable(QBDF())  # true
+
+# @benchmark solve(ode_prob, QNDF(); saveat=15.0, reltol=tol, abstol=tol)  # 17.059, 7157
+# SciMLBase.isautodifferentiable(QNDF())  # true
 
 
 
