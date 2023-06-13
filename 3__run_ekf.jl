@@ -52,7 +52,15 @@ function parse_commandline()
             help = "Estimated background uncertainty for diagonal of B matrix, i.e. uncertainty in initial condition"
             arg_type = Float64
             default = 1.0  # 1.0
-    end
+        "--solver"
+            help = "Solver method to be used in integration of ODEs"
+            arg_type = Symbol
+            default = :QNDF
+        "--sensealg"
+            help = "Method for computing sensitivities of loss function w.r.t. initial condition vector"
+            arg_type = Symbol
+            default = :QuadratureAdjoint
+   end
 
 
     parsed_args = parse_args(ARGS, s; as_symbols=true)
@@ -91,6 +99,30 @@ if !isdir("models/$model_name/EKF")
     mkpath("models/$model_name/EKF")
 end
 
+
+solver_dict = Dict(
+    :QNDF => QNDF(),
+    :FBDF => FBDF(),
+    :KenCarp4 => KenCarp4(),
+    :TRBDF2 => TRBDF2(),
+    :CVODE_BDF => CVODE_BDF(),
+)
+
+solver_name = parsed_args[:solver]
+@assert solver_name ∈ keys(solver_dict)
+solver = solver_dict[solver_name]
+
+
+sensealg_dict = Dict(
+    :QuadratureAdjoint => QuadratureAdjoint(),
+    :BacksolveAdjoint => BacksolveAdjoint(),
+    :InterpolatingAdjoint => InterpolatingAdjoint(),
+    :ZygoteAdjoint => ZygoteAdjoint()
+)
+
+sensealg_name = parsed_args[:sensealg]
+@assert sensealg_name ∈ keys(sensealg_dict)
+sensealg = sensealg_dict[sensealg_name]
 
 
 
@@ -184,7 +216,8 @@ const uₐ::Matrix{Float64} = zeros(length(u₀), length(ts))
 
 const tmin::Float64 = minimum(ts)
 const tmax::Float64 = maximum(ts)
-const tol::Float64 = 1e-3
+#const tol::Float64 = 1e-3
+const tol::Float64 = 1e-2
 const tspan = (tmin, tmax)
 
 const ϵ::Float64 = parsed_args[:epsilon]
@@ -277,7 +310,7 @@ fun = ODEFunction(rhs!; jac=jac!, jac_prototype=jac_prototype)
 ode_prob = @time ODEProblem{true, SciMLBase.FullSpecialize}(fun, u₀, tspan)
 
 if try_solve
-  sol = solve(ode_prob, CVODE_BDF(); saveat=15.0, reltol=tol, abstol=tol);
+  sol = solve(ode_prob, solver; saveat=15.0, reltol=tol, abstol=tol);
 end
 
 # test that fetching R matrix works
@@ -308,7 +341,7 @@ uₐ[:,1] .= u₀
 
 function model_forward(u_now, t_now)
     _prob = remake(ode_prob, u0=u_now, tspan=(t_now, t_now+Δt_step))
-    solve(_prob, CVODE_BDF(), reltol=tol, abstol=tol, dense=false,save_everystep=false,save_start=false, sensealg=QuadratureAdjoint())[:,end]
+    solve(_prob, solver, reltol=tol, abstol=tol, dense=false,save_everystep=false,save_start=false, sensealg=sensealg)[:,end]
 end
 
 
@@ -321,6 +354,7 @@ u_test, DM_test = Zygote.withjacobian(model_forward, u₀, ts[1])
 const u_now::Vector{Float64} = zeros(size(uₐ[:,1]))
 const DM::Matrix{Float64} = DM_test[1]
 
+println("Starting assimilation...")
 
 @showprogress for k ∈ 1:length(ts)-1  # because we always update the *next* value
     # k=2

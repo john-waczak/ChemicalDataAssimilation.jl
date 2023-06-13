@@ -39,6 +39,15 @@ function parse_commandline()
         "--use_background_cov"
             help = "Whether or not to use background covariance matrix in loss"
             action = :store_true
+        "--solver"
+            help = "Solver method to be used in integration of ODEs"
+            arg_type = Symbol
+            default = :QNDF
+        "--sensealg"
+            help = "Method for computing sensitivities of loss function w.r.t. initial condition vector"
+            arg_type = Symbol
+            default = :QuadratureAdjoint
+
     end
 
     parsed_args = parse_args(ARGS, s; as_symbols=true)
@@ -140,11 +149,11 @@ function create_slurm_scripts(parsed_args; n_tasks=8)
 
     step1 = "julia --threads \$SLURM_CPUS_PER_TASK --project=. 1__build_simulation.jl --mechanism_path $(parsed_args[:mechanism_path])  --model_name $(parsed_args[:model_name]) --time_step $(parsed_args[:time_step])"
 
-    step2 = "julia --threads \$SLURM_CPUS_PER_TASK --project=. 2__run_4dvar.jl --mechanism_path $(parsed_args[:mechanism_path])  --model_name $(parsed_args[:model_name]) --time_step $(parsed_args[:time_step]) --fudge_fac $(parsed_args[:fudge_fac]) --epsilon $(parsed_args[:epsilon])"
+    step2 = "julia --threads \$SLURM_CPUS_PER_TASK --project=. 2__run_4dvar.jl --mechanism_path $(parsed_args[:mechanism_path])  --model_name $(parsed_args[:model_name]) --time_step $(parsed_args[:time_step]) --fudge_fac $(parsed_args[:fudge_fac]) --epsilon $(parsed_args[:epsilon]) --solver $(parsed_args[:solver]) --sensealg $(parsed_args[:sensealg])"
 
     step2b = "julia --threads \$SLURM_CPUS_PER_TASK --project=. 2b__visualize_results.jl --model_name $(parsed_args[:model_name]) --time_step $(parsed_args[:time_step]) --fudge_fac $(parsed_args[:fudge_fac])"
 
-    step3 = "julia --threads \$SLURM_CPUS_PER_TASK --project=. 3__run_ekf.jl --mechanism_path $(parsed_args[:mechanism_path])  --model_name $(parsed_args[:model_name]) --time_step $(parsed_args[:time_step]) --fudge_fac $(parsed_args[:fudge_fac]) --epsilon $(parsed_args[:epsilon])"
+    step3 = "julia --threads \$SLURM_CPUS_PER_TASK --project=. 3__run_ekf.jl --mechanism_path $(parsed_args[:mechanism_path])  --model_name $(parsed_args[:model_name]) --time_step $(parsed_args[:time_step]) --fudge_fac $(parsed_args[:fudge_fac]) --epsilon $(parsed_args[:epsilon]) --solver $(parsed_args[:solver]) --sensealg $(parsed_args[:sensealg])"
 
     step3b = "julia --threads \$SLURM_CPUS_PER_TASK --project=. 3b__visualize_results.jl --model_name $(parsed_args[:model_name])"
 
