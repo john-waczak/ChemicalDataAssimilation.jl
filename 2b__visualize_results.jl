@@ -32,9 +32,6 @@ function parse_commandline()
             help = "The time step used during integration of mechanism (in minutes)."
             arg_type = Float64
             default = 15.0
-        "--restart"
-            help = "Whether or not to restart 4d_var from previous fitresult"
-            action = :store_true
         "--fudge_fac"
             help = "A fudge factor for manipulating scale of measurement uncertainties"
             arg_type = Float64

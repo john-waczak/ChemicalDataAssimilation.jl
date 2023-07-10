@@ -31,10 +31,6 @@ function parse_commandline()
             help = "The time step used during integration of mechanism (in minutes)."
             arg_type = Float64
             default = 15.0
-        "--use_updated_photolysis"
-            help = "Whether or not to use updated photolysis"
-            arg_type = Bool
-            default = true
         "--restart"
             help = "Whether or not to restart 4d_var from previous fitresult"
             action = :store_true
@@ -93,20 +89,35 @@ function create_slurm_scripts(parsed_args; n_tasks=8)
         """
 
     step2 = """
-        julia --threads \$SLURM_CPUS_PER_TASK --project=. 2__run_4dvar.jl --mechanism_path $(parsed_args[:mechanism_path])  --model_name $(parsed_args[:model_name]) --time_step $(parsed_args[:time_step]) --restart $(parsed_args[:restart]) --try_solve $(parsed_args[:try_solve]) --use_background_cov $(parsed_args[:use_background_cov]) --fudge_fac $(parsed_args[:fudge_fac]) --epsilon $(parsed_args[:epsilon]) --solver $(parsed_args[:solver]) --sensealg $(parsed_args[:sensealg])
+        julia --threads \$SLURM_CPUS_PER_TASK --project=. 2__run_4dvar.jl --mechanism_path $(parsed_args[:mechanism_path])  --model_name $(parsed_args[:model_name]) --time_step $(parsed_args[:time_step])  --fudge_fac $(parsed_args[:fudge_fac]) --epsilon $(parsed_args[:epsilon]) --solver $(parsed_args[:solver]) --sensealg $(parsed_args[:sensealg])
         """
 
     step2b = """
-        julia --threads \$SLURM_CPUS_PER_TASK --project=. 2b__visualize_results.jl --model_name $(parsed_args[:model_name]) --time_step $(parsed_args[:time_step]) --restart $(parsed_args[:restart]) --fudge_fac $(parsed_args[:fudge_fac])
+        julia --threads \$SLURM_CPUS_PER_TASK --project=. 2b__visualize_results.jl --model_name $(parsed_args[:model_name]) --time_step $(parsed_args[:time_step]) --fudge_fac $(parsed_args[:fudge_fac])
         """
 
     step3 = """
-        julia --threads \$SLURM_CPUS_PER_TASK --project=. 3__run_ekf.jl --mechanism_path $(parsed_args[:mechanism_path])  --model_name $(parsed_args[:model_name]) --time_step $(parsed_args[:time_step]) --try_solve $(parsed_args[:try_solve]) --fudge_fac $(parsed_args[:fudge_fac]) --epsilon $(parsed_args[:epsilon])
+        julia --threads \$SLURM_CPUS_PER_TASK --project=. 3__run_ekf.jl --mechanism_path $(parsed_args[:mechanism_path])  --model_name $(parsed_args[:model_name]) --time_step $(parsed_args[:time_step]) --fudge_fac $(parsed_args[:fudge_fac]) --epsilon $(parsed_args[:epsilon])
         """
 
     step3b = """
         julia --threads \$SLURM_CPUS_PER_TASK --project=. 3b__visualize_results.jl --model_name $(parsed_args[:model_name])
         """
+
+    if parsed_args[:restart]
+        step2 = step2 * " --restart "
+    end
+
+    if parsed_args[:try_solve]
+        step2 = step2 * " --try_solve"
+        step3 = step3 * " --try_solve"
+    end
+
+    if parsed_args[:use_background_cov]
+        step2 = step2 * " --use_background_cov"
+    end
+
+
 
 
     open("1__$(parsed_args[:model_name]).slurm", "w") do f
