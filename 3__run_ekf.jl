@@ -36,7 +36,7 @@ function parse_commandline()
         "--model_name"
             help = "Name for the resulting model used in output paths"
             arg_type = String
-            default = "methane"
+            default = "empty_methane"
         "--time_step"
             help = "The time step used during integration of mechanism (in minutes)."
             arg_type = Float64
@@ -74,11 +74,6 @@ function parse_commandline()
         mkpath("models/$(parsed_args[:model_name])")
     end
 
-
-    @assert ispath("data/no_ap/number_densities.csv") "Can not find  data/no_ap/number_densities.csv"
-    @assert ispath("data/w_ap/number_densities.csv") "Can not find  data/w_ap/number_densities.csv"
-    @assert ispath("data/no_ap/number_densities_ϵ.csv") "Can not find  data/no_ap/number_densities_ϵ.csv"
-    @assert ispath("data/w_ap/number_densities_ϵ.csv") "Can not find  data/w_ap/number_densities_ϵ.csv"
     @assert ispath("models/$(parsed_args[:model_name])/4dvar/u0.csv")  "Can not find models/$(parsed_args[:model_name])/4dvar/u0.csv"
 
 
@@ -110,7 +105,8 @@ solver_dict = Dict(
 
 solver_name = parsed_args[:solver]
 @assert solver_name ∈ keys(solver_dict)
-solver = solver_dict[solver_name]
+#solver = solver_dict[solver_name]
+solver = CVODE_BDF()
 
 
 sensealg_dict = Dict(
@@ -177,12 +173,14 @@ end
 
 const idx_meas::Vector{Int} = Int[]
 
-is_meas_in_mechanism = [spec ∈ df_species[!, "MCM Name"] for spec ∈ names(df_number_densities[:, Not([:t, :w_ap])])]
 
-df_nd_to_use = df_number_densities[:, Not([:t, :w_ap])]
+measurements_to_ignore = [:C2H6, :SO2]  # skip any with nans or negative values
+is_meas_in_mechanism = [spec ∈ df_species[!, "MCM Name"] for spec ∈ names(df_number_densities[:, Not([measurements_to_ignore..., :t, :w_ap])])]
+
+df_nd_to_use = df_number_densities[:, Not([measurements_to_ignore..., :t, :w_ap])]
 df_nd_to_use = df_nd_to_use[:, is_meas_in_mechanism]
 
-df_nd_to_use_ϵ = df_number_densities_ϵ[:, Not([:t, :w_ap])]
+df_nd_to_use_ϵ = df_number_densities_ϵ[:, Not([measurements_to_ignore..., :t, :w_ap])]
 df_nd_to_use_ϵ = df_nd_to_use_ϵ[:, is_meas_in_mechanism]
 
 for spec_name ∈ names(df_nd_to_use)
