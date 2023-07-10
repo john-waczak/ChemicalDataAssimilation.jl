@@ -1,4 +1,4 @@
-function generate_photolysis_rates(no_ap_path::String, w_ap_path::String; model_name::String="mcm", Δt_step::Float64=15.0)
+function generate_photolysis_rates(data_path::String; model_name::String="mcm", Δt_step::Float64=15.0)
     # if file already exists, delete it
     outpath = "./models/$(model_name)/photolysis_rates.csv"
 
@@ -12,15 +12,11 @@ function generate_photolysis_rates(no_ap_path::String, w_ap_path::String; model_
     end
 
     # load in data
-    df_photolysis_no_ap = CSV.File(no_ap_path) |> DataFrame
-    df_photolysis_w_ap = CSV.File(w_ap_path) |> DataFrame
+    df_photolysis = CSV.File(data_path) |> DataFrame
 
     # add column to indicate active pure or not
-    df_photolysis_no_ap.w_ap = [false for _ ∈ 1:nrow(df_photolysis_no_ap)]
-    df_photolysis_w_ap.w_ap = [false for _ ∈ 1:nrow(df_photolysis_w_ap)]
-
-    # join them together
-    df_photolysis = vcat(df_photolysis_no_ap[1:end-1,:], df_photolysis_w_ap)
+    idx_wap = [dt .≥ 0.0 for dt ∈ df_photolysis.Δt]
+    df_photolysis.w_ap = idx_wap
 
     # add in time coordinate
     df_photolysis.t = df_photolysis.Δt .* Δt_step

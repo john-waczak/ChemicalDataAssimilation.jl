@@ -19,6 +19,18 @@ function parse_commandline()
     s = ArgParseSettings()
 
     @add_arg_table! s begin
+        "--data_basepath"
+            help = "Path to data files to be used for testing"
+            arg_type = String
+            default = "data/intertek-emergency-testing"
+        "--collection_id"
+            help = "Name of collection to analyze"
+            arg_type = String
+            default = "empty"
+        "--unc_ext"
+            help = "Extension for uncertainty files."
+            arg_type = String
+            default = "_std"
         "--mechanism_path"
             help = "Path to mechanism `.fac` file specifying the chemical mechanism to be used."
             arg_type = String
@@ -26,34 +38,26 @@ function parse_commandline()
         "--model_name"
             help = "Name for the resulting model used in output paths"
             arg_type = String
-            default = "methane"
+            default = "empty_methane"
         "--time_step"
             help = "The time step used during integration of mechanism (in minutes)."
             arg_type = Float64
             default = 15.0
-        "--use_updated_photolysis"
-            help = "Whether or not to use updated photolysis"
-            action = :store_true
     end
 
 
     parsed_args = parse_args(ARGS, s; as_symbols=true)
 
+    @assert ispath(parsed_args[:data_basepath])
+    @assert ispath(joinpath(parsed_args[:data_basepath], "number_densities", parsed_args[:collection_id]))
     @assert isfile(parsed_args[:mechanism_path]) "Supplied mechanism path does not exist"
 
 
-    # make sure that the datapath and outpath exist
+    # make sure that the outpath exists
     if !ispath("models/$(parsed_args[:model_name])")
         println("$(parsed_args[:model_name]) directory does not exist in `./models`. Creating now...")
         mkpath("models/$(parsed_args[:model_name])")
     end
-
-
-    @assert ispath("data/no_ap/number_densities.csv") "Can not find  data/no_ap/number_densities.csv"
-    @assert ispath("data/w_ap/number_densities.csv") "Can not find  data/w_ap/number_densities.csv"
-    @assert ispath("data/no_ap/number_densities_ϵ.csv") "Can not find  data/no_ap/number_densities_ϵ.csv"
-    @assert ispath("data/w_ap/number_densities_ϵ.csv") "Can not find  data/w_ap/number_densities_ϵ.csv"
-
 
     return parsed_args
 end
@@ -61,34 +65,38 @@ end
 
 # parse arguments and set up output directory
 parsed_args = parse_commandline()
-mechpath = parsed_args[:mechanism_path]
-model_name = parsed_args[:model_name]
 
-# set time step
+data_basepath = parsed_args[:data_basepath]
+model_name = parsed_args[:model_name]
+mechanism_path = parsed_args[:mechanism_path]
+collection_id = parsed_args[:collection_id]
+unc_ext = parsed_args[:unc_ext]
 Δt_step = parsed_args[:time_step]  # time step in minutes
 
 
 
+
+
 # generate dictionary with .fac file information
-fac_dict = read_fac_file(mechpath)
+fac_dict = read_fac_file(mechanism_path)
 
 # 1. generate species indices, names, etc...
 println("Species: ")
 println(size(generate_species(fac_dict)))
 
-generate_species_df("data/names.csv", fac_dict; model_name=model_name)
+
+names_path = joinpath(data_basepath, "names.csv")
+@assert ispath(names_path)
+generate_species_df(names_path, fac_dict; model_name=model_name)
 df_species = CSV.File("models/$model_name/species.csv") |> DataFrame
 
 
 # 2. generate lookup table for M, O2, N2, H2O
-generate_densities("data/no_ap/number_densities.csv",
-                    "data/w_ap/number_densities.csv";
-                    model_name=model_name
-                    )
-generate_densities("data/no_ap/number_densities_ϵ.csv",
-                    "data/w_ap/number_densities_ϵ.csv";
-                    model_name=model_name
-                    )
+generate_densities(
+    joinpath(data_basepath, "number_densities", collection_id, "number_densities.csv"),
+    joinpath(data_basepath, "number_densities", collection_id, "number_densities"*unc_ext*".csv"),
+    model_name=model_name
+)
 
 
 df_params = CSV.File("models/$model_name/state_parameters.csv") |> DataFrame
@@ -97,18 +105,13 @@ df_number_densities = CSV.File("models/$model_name/number_densities.csv") |> Dat
 
 
 # 3. Generate lookup table for Photolysis Rates
-use_recalculated_photo_rates = parsed_args[:use_updated_photolysis]
-if use_recalculated_photo_rates
-    include("1b__build_new_photolysis_rates.jl")  # has the code to generate re-fitted photo rates
-    df_photolysis = CSV.File("data/photolysis_rates_corrected.csv") |> DataFrame
-else
-    generate_photolysis_rates("data/no_ap/photolysis_rates.csv",
-                              "data/w_ap/photolysis_rates.csv";
-                              model_name=model_name,
-                              Δt_step=Δt_step
-                              )
-    df_photolysis = CSV.File("models/$model_name/photolysis_rates.csv") |> DataFrame
-end
+generate_photolysis_rates(
+    joinpath(data_basepath, "rates", collection_id, "photolysis_rates.csv"),
+    model_name=model_name,
+    Δt_step=Δt_step
+)
+
+df_photolysis = CSV.File("models/$model_name/photolysis_rates.csv") |> DataFrame
 
 
 # 4. Generate lookup table for generic/complex rate coefficients
