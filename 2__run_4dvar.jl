@@ -42,7 +42,7 @@ function parse_commandline()
         "--model_name"
             help = "Name for the resulting model used in output paths"
             arg_type = String
-            default = "methane"
+            default = "empty_methane"
         "--time_step"
             help = "The time step used during integration of mechanism (in minutes)."
             arg_type = Float64
@@ -84,10 +84,8 @@ function parse_commandline()
         mkpath("models/$(parsed_args[:model_name])")
     end
 
-    @assert ispath("data/no_ap/number_densities.csv") "Can not find  data/no_ap/number_densities.csv"
-    @assert ispath("data/w_ap/number_densities.csv") "Can not find  data/w_ap/number_densities.csv"
-    @assert ispath("data/no_ap/number_densities_ϵ.csv") "Can not find  data/no_ap/number_densities_ϵ.csv"
-    @assert ispath("data/w_ap/number_densities_ϵ.csv") "Can not find  data/w_ap/number_densities_ϵ.csv"
+    @assert isfile(parsed_args[:mechanism_path]) "Supplied mechanism path does not exist"
+
 
     if parsed_args[:restart]
         @assert ispath("models/$(parsed_args[:model_name])/4dvar/u0.csv")  "Can not find models/$(parsed_args[:model_name])/4dvar/u0.csv"
@@ -101,13 +99,14 @@ end
 # 0. parse arguments and set up output directory
 println("Parsing command line arguments...")
 parsed_args = parse_commandline()
+
 mechpath = parsed_args[:mechanism_path]
 model_name = parsed_args[:model_name]
 want_restart = parsed_args[:restart]
 
+
 # mechpath = "mechanism-files/extracted/other/all_meth_vocs.fac"
 # model_name = "all_meth"
-
 solver_dict = Dict(
     :QNDF => QNDF(),
     :FBDF => FBDF(),
@@ -145,8 +144,8 @@ println("Loading Data into DataFrames...")
 
 fac_dict = read_fac_file(mechpath)
 df_species = CSV.File("models/$model_name/species.csv") |> DataFrame;
-df_params = CSV.File("models/$model_name/state_parameters.csv") |> DataFrame
-df_params_ϵ = CSV.File("models/$model_name/state_parameters_ϵ.csv") |> DataFrame
+df_params = CSV.File("models/$model_name/state_parameters.csv") |> DataFrame;
+df_params_ϵ = CSV.File("models/$model_name/state_parameters_ϵ.csv") |> DataFrame;
 df_number_densities = CSV.File("models/$model_name/number_densities.csv") |> DataFrame;
 df_number_densities_ϵ = CSV.File("models/$model_name/number_densities_ϵ.csv") |> DataFrame;
 
@@ -154,7 +153,7 @@ df_number_densities_ϵ = CSV.File("models/$model_name/number_densities_ϵ.csv") 
 # 2. Generate Initial Conditions
 # --------------------------------------------------------------------------------------------------------------------------
 println("Loading initial concentrations...")
-measurements_to_ignore = [:C2H6]  # skip any with nans
+measurements_to_ignore = [:C2H6, :SO2]  # skip any with nans or negative values
 init_path = "./mechanism-files/initial_concentrations/full.txt"
 @assert isfile(init_path)
 
