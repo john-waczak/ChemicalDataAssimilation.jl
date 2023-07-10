@@ -7,6 +7,18 @@ function parse_commandline()
     s = ArgParseSettings()
 
     @add_arg_table! s begin
+        "--data_basepath"
+            help = "Path to data files to be used for testing"
+            arg_type = String
+            default = "data/intertek-emergency-testing"
+        "--collection_id"
+            help = "Name of collection to analyze"
+            arg_type = String
+            default = "empty"
+        "--unc_ext"
+            help = "Extension for uncertainty files."
+            arg_type = String
+            default = "_std"
         "--mechanism_path"
             help = "Path to mechanism `.fac` file specifying the chemical mechanism to be used."
             arg_type = String
@@ -69,7 +81,7 @@ function create_slurm_scripts(parsed_args; n_tasks=8)
 
 
     step1 = """
-        julia --threads \$SLURM_CPUS_PER_TASK --project=. 1__build_simulation.jl --mechanism_path $(parsed_args[:mechanism_path])  --model_name $(parsed_args[:model_name]) --time_step $(parsed_args[:time_step]) --use_updated_photolysis $(parsed_args[:use_updated_photolysis])
+        julia --threads \$SLURM_CPUS_PER_TASK --project=. 1__build_simulation.jl --data_basepath $(parsed_args[:data_basepath]) --collection_id $(parsed_args[:collection_id]) --unc_ext $(parsed_args[:unc_ext]) --mechanism_path $(parsed_args[:mechanism_path])  --model_name $(parsed_args[:model_name]) --time_step $(parsed_args[:time_step]) 
         """
 
     step2 = """
