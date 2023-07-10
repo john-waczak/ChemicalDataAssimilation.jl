@@ -26,7 +26,7 @@ function parse_commandline()
         "--model_name"
         help = "Name for the resulting model used in output paths"
         arg_type = String
-        default = "methane"
+        default = "empty_methane"
     end
 
 
@@ -61,12 +61,13 @@ df_number_densities_ϵ = CSV.File("models/$model_name/number_densities_ϵ.csv") 
 # --------------------------------------------------------------------------------------------------------------------------
 idx_meas::Vector{Int} = Int[]
 
-is_meas_in_mechanism = [spec ∈ df_species[!, "MCM Name"] for spec ∈ names(df_number_densities[:, Not([:t, :w_ap])])]
+measurements_to_ignore = [:C2H6, :SO2]  # skip any with nans or negative values
+is_meas_in_mechanism = [spec ∈ df_species[!, "MCM Name"] for spec ∈ names(df_number_densities[:, Not([measurements_to_ignore..., :t, :w_ap])])]
 
-df_nd_to_use = df_number_densities[:, Not([:t, :w_ap])]
+df_nd_to_use = df_number_densities[:, Not([measurements_to_ignore..., :t, :w_ap])]
 df_nd_to_use = df_nd_to_use[:, is_meas_in_mechanism]
 
-df_nd_to_use_ϵ = df_number_densities_ϵ[:, Not([:t, :w_ap])]
+df_nd_to_use_ϵ = df_number_densities_ϵ[:, Not([measurements_to_ignore..., :t, :w_ap])]
 df_nd_to_use_ϵ = df_nd_to_use_ϵ[:, is_meas_in_mechanism]
 
 for spec_name ∈ names(df_nd_to_use)
