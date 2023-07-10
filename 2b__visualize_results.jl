@@ -27,7 +27,7 @@ function parse_commandline()
         "--model_name"
             help = "Name for the resulting model used in output paths"
             arg_type = String
-            default = "methane"
+            default = "empty_methane"
         "--time_step"
             help = "The time step used during integration of mechanism (in minutes)."
             arg_type = Float64
