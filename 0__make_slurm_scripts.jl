@@ -52,6 +52,14 @@ function parse_commandline()
             help = "Estimated background uncertainty for diagonal of B matrix, i.e. uncertainty in initial condition"
             arg_type = Float64
             default = 0.5
+        "--solver"
+            help = "Solver method to be used in integration of ODEs"
+            arg_type = Symbol
+            default = :QNDF
+        "--sensealg"
+            help = "Method for computing sensitivities of loss function w.r.t. initial condition vector"
+            arg_type = Symbol
+            default = :QuadratureAdjoint
     end
 
     parsed_args = parse_args(ARGS, s; as_symbols=true)
@@ -85,7 +93,7 @@ function create_slurm_scripts(parsed_args; n_tasks=8)
         """
 
     step2 = """
-        julia --threads \$SLURM_CPUS_PER_TASK --project=. 2__run_4dvar.jl --mechanism_path $(parsed_args[:mechanism_path])  --model_name $(parsed_args[:model_name]) --time_step $(parsed_args[:time_step]) --restart $(parsed_args[:restart]) --try_solve $(parsed_args[:try_solve]) --use_background_cov $(parsed_args[:use_background_cov]) --fudge_fac $(parsed_args[:fudge_fac]) --epsilon $(parsed_args[:epsilon])
+        julia --threads \$SLURM_CPUS_PER_TASK --project=. 2__run_4dvar.jl --mechanism_path $(parsed_args[:mechanism_path])  --model_name $(parsed_args[:model_name]) --time_step $(parsed_args[:time_step]) --restart $(parsed_args[:restart]) --try_solve $(parsed_args[:try_solve]) --use_background_cov $(parsed_args[:use_background_cov]) --fudge_fac $(parsed_args[:fudge_fac]) --epsilon $(parsed_args[:epsilon]) --solver $(parsed_args[:solver]) --sensealg $(parsed_args[:sensealg])
         """
 
     step2b = """
