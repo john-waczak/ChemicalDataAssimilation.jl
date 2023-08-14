@@ -96,14 +96,52 @@ W_mr_ϵ = Matrix(df_w_ϵ)'
 
 
 # --------------------------------------------------------------------------------------------------------------------------
-# 4. Generate time-series plots
+# 4. Generate time-series plots & report
 # --------------------------------------------------------------------------------------------------------------------------
 df_species[3,:]
 idx_0 = findfirst(x -> x == 0.0, ts)
 
+# set output for quarto documents
+report_basepath = joinpath("models/$model_name/EKF")
+reportpath = joinpath(report_basepath, "summary.qmd")
+
+# open report file
+f = open(reportpath, "w")
+
+model_name = "high_unprimed_methane"
+model_name_pretty = join(uppercasefirst.(split(model_name, "_")[1:end-1]), " ")
+
+# write header text
+qmd_header = """
+---
+title: \"ActivePure Research Labs Chamber Assimilation\"
+subtitle: \"Test: $(model_name_pretty)\"
+date: today
+format:
+    pdf:
+      keep-tex: true
+reference-location: margin
+citation-location: margin
+---
+"""
+println(f, qmd_header)
+
+# generate plots and summary info:
 @showprogress for i ∈ 1:nrow(df_species)
     plot_spec_name = df_species[df_species.idx_species .== i, "MCM Name"][1]
     units, unit_mult = get_reasonable_mr_units(ua_mr_vals[i,:])
+
+    mean_noap = round(mean(ua_mr_vals[i,2:idx_0] .* unit_mult), sigdigits=3)
+    median_noap = round(median(ua_mr_vals[i,2:idx_0] .* unit_mult), sigdigits=3)
+    std_noap = round(std(ua_mr_vals[i,2:idx_0] .* unit_mult), sigdigits=3)
+    max_noap = round(maximum(ua_mr_vals[i,2:idx_0] .* unit_mult), sigdigits=3)
+    min_noap = round(minimum(ua_mr_vals[i,2:idx_0] .* unit_mult), sigdigits=3)
+
+    mean_wap = round(mean(ua_mr_vals[i,idx_0:end] .* unit_mult), sigdigits=3)
+    median_wap = round(median(ua_mr_vals[i,idx_0:end] .* unit_mult), sigdigits=3)
+    std_wap = round(std(ua_mr_vals[i,idx_0:end] .* unit_mult), sigdigits=3)
+    max_wap = round(maximum(ua_mr_vals[i,idx_0:end] .* unit_mult), sigdigits=3)
+    min_wap = round(minimum(ua_mr_vals[i,idx_0:end] .* unit_mult), sigdigits=3)
 
     p1 = plot(
         ts[2:idx_0],
@@ -139,10 +177,32 @@ idx_0 = findfirst(x -> x == 0.0, ts)
     mag = 1.35
     plot(p1,p2, layout=grid(1,2,widths=[0.7,0.3]), size=(mag*600, mag*400), margins=5Plots.mm)
 
-    savefig("models/$model_name/EKF/$(plot_spec_name).png")
-    savefig("models/$model_name/EKF/$(plot_spec_name).pdf")
+    savepath = "models/$model_name/EKF/$(plot_spec_name)"
+    savepath_png = savepath * ".png"
+    savepath_pdf = savepath * ".pdf"
+
+    savefig(savepath_png)
+    savefig(savepath_pdf)
+
+    println(f, "\n")
+    println(f, "# $(plot_spec_name)\n")
+    println(f, "![$(plot_spec_name)]($(plot_spec_name).pdf)\n")
+    # write out statistics for No AP vs w AP
+    table_text = """
+|   | mean | median | standard deviation | min | max | units |
+|---|:----:|:------:|:------------------:|:---:|:---:|:-----:|
+|Without ActivePure|$(mean_noap)|$(median_noap)|$(std_noap)|$(min_noap)|$(max_noap)|$(units)|
+|With ActivePure|$(mean_wap)|$(median_wap)|$(std_wap)|$(min_wap)|$(max_wap)|$(units)|
+
+"""
+    println(f, table_text)
+    println(f, "\n")
+
 end
 
+
+
+close(f)
 
 
 
