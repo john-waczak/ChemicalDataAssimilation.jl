@@ -108,7 +108,6 @@ reportpath = joinpath(report_basepath, "summary.qmd")
 # open report file
 f = open(reportpath, "w")
 
-model_name = "high_unprimed_methane"
 model_name_pretty = join(uppercasefirst.(split(model_name, "_")[1:end-1]), " ")
 
 # write header text
@@ -131,17 +130,20 @@ println(f, qmd_header)
     plot_spec_name = df_species[df_species.idx_species .== i, "MCM Name"][1]
     units, unit_mult = get_reasonable_mr_units(ua_mr_vals[i,:])
 
-    mean_noap = round(mean(ua_mr_vals[i,2:idx_0] .* unit_mult), sigdigits=3)
-    median_noap = round(median(ua_mr_vals[i,2:idx_0] .* unit_mult), sigdigits=3)
-    std_noap = round(std(ua_mr_vals[i,2:idx_0] .* unit_mult), sigdigits=3)
-    max_noap = round(maximum(ua_mr_vals[i,2:idx_0] .* unit_mult), sigdigits=3)
-    min_noap = round(minimum(ua_mr_vals[i,2:idx_0] .* unit_mult), sigdigits=3)
+    vals_noap = [v * unit_mult for v ∈ ua_mr_vals[i,2:idx_0] if !isnan(v)]
+    vals_wap = [v * unit_mult for v ∈ ua_mr_vals[i,idx_0:end] if !isnan(v)]
 
-    mean_wap = round(mean(ua_mr_vals[i,idx_0:end] .* unit_mult), sigdigits=3)
-    median_wap = round(median(ua_mr_vals[i,idx_0:end] .* unit_mult), sigdigits=3)
-    std_wap = round(std(ua_mr_vals[i,idx_0:end] .* unit_mult), sigdigits=3)
-    max_wap = round(maximum(ua_mr_vals[i,idx_0:end] .* unit_mult), sigdigits=3)
-    min_wap = round(minimum(ua_mr_vals[i,idx_0:end] .* unit_mult), sigdigits=3)
+    mean_noap = round(mean(vals_noap), sigdigits=3)
+    median_noap = round(median(vals_noap), sigdigits=3)
+    std_noap = round(std(vals_noap), sigdigits=3)
+    max_noap = round(maximum(vals_noap), sigdigits=3)
+    min_noap = round(minimum(vals_noap), sigdigits=3)
+
+    mean_wap = round(mean(vals_wap), sigdigits=3)
+    median_wap = round(median(vals_wap), sigdigits=3)
+    std_wap = round(std(vals_wap), sigdigits=3)
+    max_wap = round(maximum(vals_wap), sigdigits=3)
+    min_wap = round(minimum(vals_wap), sigdigits=3)
 
     p1 = plot(
         ts[2:idx_0],
@@ -196,6 +198,7 @@ println(f, qmd_header)
 
 """
     println(f, table_text)
+
     println(f, "\n")
 
 end
